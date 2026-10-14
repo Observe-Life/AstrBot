@@ -241,3 +241,56 @@ _私は、高性能ですから!_
 
 <img src="https://files.astrbot.app/watashiwa-koseino-desukara.gif" width="100"/>
 </div>
+
+---
+
+# 📦 本机 astrbot 容器镜像备份（家用备注）
+
+> ⚠️ **本节只存在于分支 `image-backup/astrbot-v4.28.2`，不属于上游代码。请勿合并进 `master`，否则会与上游同步冲突。**
+
+## 备份对象
+
+| 项目 | 内容 |
+|---|---|
+| 来源 | 飞牛 NAS（192.168.31.115）正在运行的容器 `astrbot` |
+| 镜像标签 | `soulter/astrbot:v4.28.2` |
+| 镜像 ID | `sha256:072a062e532d34b66ceafb385da0a7ce592c3f671c6c0eba1e25f3264593308e` |
+| 镜像构建时间 | 2026-09-27 23:20（CST） |
+| 备份时间 | 2026-10-14 18:47（CST） |
+| 原始导出文件 | `astrbot-v4.28.2.tar`，1.9 GB |
+| 压缩后文件 | `astrbot-v4.28.2.tar.gz`，682 MB |
+
+## 下载地址
+
+见本仓库 Releases 中的 **`astrbot-v4.28.2-local-image`** 附件。
+
+## 校验值（SHA-256）
+
+```text
+astrbot-v4.28.2.tar.gz
+9ecb2994f59a63973d12d39c887283bba6509235c7977cb68f3249e7100b89e5
+
+astrbot-v4.28.2.tar
+291483b7e78e7537006018078ce221c8a08af085297a0ed9c32f0865de77a24a
+```
+
+## 恢复方法
+
+```bash
+# 下载附件后
+gzip -dc astrbot-v4.28.2.tar.gz | docker load
+
+# 若使用未压缩的 tar
+docker load -i astrbot-v4.28.2.tar
+```
+
+导入后会得到镜像 `soulter/astrbot:v4.28.2`。
+
+## 为什么需要这份备份
+
+本机上该镜像的 `RepoDigests` 为**空**，说明它不是从镜像仓库直接拉取的（而是本地导入或本地构建），**没有可对照的仓库摘要**。仅凭版本号 `v4.28.2` 无法保证以后重建出完全相同的镜像，因此保留一份实体备份用于回滚。
+
+## 备注
+
+- 使用该镜像的容器只挂载了 `/AstrBot/data`（即宿主 `/vol1/docker/astrbot/data`），**代码本身在镜像内**，例如 `astrbot/core/agent/mcp_client.py`。
+- 因此，修改 AstrBot 代码必须重建镜像，在运行中的容器里直接改文件会在容器重建后丢失。
