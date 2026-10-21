@@ -5,8 +5,6 @@ export interface WebUIPreferencesData {
 }
 
 export interface CompressContextRequest {
-  umo: string;
-  cid: string;
   preferred_provider_id?: string;
   selected_model?: string;
 }
@@ -24,7 +22,10 @@ export const webuiExtApi = {
   putPreference(key: string, value: Record<string, unknown>) {
     return apiV1Client.put('/webui_preferences', { key, value });
   },
-  compressContext(payload: CompressContextRequest) {
-    return apiV1Client.post('/compress_context', payload);
+  compressContext(sessionId: string, payload: CompressContextRequest) {
+    return apiV1Client.post(
+      `/chat/sessions/${encodeURIComponent(sessionId)}/compact`,
+      payload,
+    );
   },
 };

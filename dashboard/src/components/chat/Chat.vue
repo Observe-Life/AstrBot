@@ -2166,7 +2166,7 @@ async function compactCurrentContext() {
   }
   try {
     const selection = getSelectedProviderSelection();
-    const response: any = await webuiExtApi.compressContext({
+    const response: any = await webuiExtApi.compressContext(sessionId, {
       preferred_provider_id: selection.providerId || undefined,
       selected_model: selection.modelName || undefined,
     });
