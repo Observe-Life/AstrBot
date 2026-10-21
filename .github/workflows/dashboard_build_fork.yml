@@ -1,0 +1,50 @@
+name: AstrBot Dashboard Build (fork)
+
+on:
+  push:
+    branches:
+      - "4.29.0-customize"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.28.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24.13.0'
+          cache: "pnpm"
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: Check i18n keys
+        working-directory: dashboard
+        run: pnpm run i18n:check
+
+      - name: Install and Build
+        working-directory: dashboard
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
+
+      - name: Inject Commit SHA
+        run: |
+          echo "COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          mkdir -p dashboard/dist/assets
+          echo $COMMIT_SHA > dashboard/dist/assets/version
+          cd dashboard
+          zip -r dist.zip dist
+
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-fork
+          path: dashboard/dist

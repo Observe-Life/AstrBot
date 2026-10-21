@@ -276,6 +276,7 @@
             :placeholder="tm('input.projectPlaceholder')"
             @send="sendCurrentMessage"
             @stop="stopCurrentSession"
+            @compress-context="compactCurrentContext"
             @remove-image="removeImage"
             @remove-audio="removeAudio"
             @remove-file="removeFile"
@@ -424,6 +425,7 @@
             "
             @send="sendCurrentMessage"
             @stop="stopCurrentSession"
+            @compress-context="compactCurrentContext"
             @remove-image="removeImage"
             @remove-audio="removeAudio"
             @remove-file="removeFile"
@@ -545,6 +547,7 @@ import {
   Trash2,
 } from "@lucide/vue";
 import { chatApi, providerApi } from "@/api/v1";
+import { webuiExtApi } from "@/api/webuiExt";
 import ChatSettingsDialog from "@/components/chat/ChatSettingsDialog.vue";
 import ChatToolbarContext from "@/components/chat/ChatToolbarContext.vue";
 import ProjectDialog, {
@@ -576,6 +579,7 @@ import { useProjects } from "@/composables/useProjects";
 import { useDragUpload } from "@/composables/useDragUpload";
 import { useProviderModelSelection } from "@/composables/useProviderModelSelection";
 import { useChatHeaderStore } from "@/stores/chatHeader";
+import { useAuthStore } from "@/stores/auth";
 import { useHeaderContextStore } from "@/stores/headerContext";
 import { useMobileDrawerStore } from "@/stores/mobileDrawer";
 import { useCustomizerStore } from "@/stores/customizer";
@@ -741,6 +745,52 @@ const settingsOpen = ref(false);
 const enableStreaming = ref(true);
 const enableReasoning = ref(true);
 const sendShortcut = ref<"enter" | "shift_enter">("enter");
+const authStore = useAuthStore();
+const CHAT_UI_SETTINGS_KEY = "chat_ui_settings";
+const persistedSendShortcuts = reactive<Record<string, string>>({});
+let chatSettingsSyncing = false;
+let chatSettingsSaveTimer: number | null = null;
+
+function currentViewScope(): "mobile" | "desktop" {
+  return isMobile.value ? "mobile" : "desktop";
+}
+
+async function applyPersistedSendShortcut() {
+  if (!authStore.isAuthenticated) return;
+  try {
+    const response: any = await webuiExtApi.getPreferences();
+    if (response.data?.status !== "ok") return;
+    const prefs = response.data?.data?.preferences || {};
+    const stored = prefs[CHAT_UI_SETTINGS_KEY]?.sendShortcut || {};
+    for (const key of Object.keys(stored)) persistedSendShortcuts[key] = stored[key];
+    const value = persistedSendShortcuts[currentViewScope()];
+    if (value === "enter" || value === "shift_enter") {
+      chatSettingsSyncing = true;
+      sendShortcut.value = value;
+      chatSettingsSyncing = false;
+    }
+  } catch (error) {
+    console.warn("Failed to load chat UI settings:", error);
+  }
+}
+
+watch(sendShortcut, (value) => {
+  if (chatSettingsSyncing || !authStore.isAuthenticated) return;
+  const view = currentViewScope();
+  if (persistedSendShortcuts[view] === value) return;
+  persistedSendShortcuts[view] = value;
+  if (chatSettingsSaveTimer !== null)
+    window.clearTimeout(chatSettingsSaveTimer);
+  chatSettingsSaveTimer = window.setTimeout(() => {
+    webuiExtApi
+      .putPreference(CHAT_UI_SETTINGS_KEY, { ...persistedSendShortcuts })
+      .catch((error) =>
+        console.warn("Failed to save chat UI settings:", error),
+      );
+    chatSettingsSaveTimer = null;
+  }, 500);
+});
+
 const DRAFT_SAVE_DELAY_MS = 300;
 let activeDraftSessionId = currSessionId.value;
 let draftSaveTimer: number | null = null;
@@ -1063,6 +1113,7 @@ watch(
 );
 
 onMounted(async () => {
+  void applyPersistedSendShortcut();
   window.addEventListener("beforeunload", flushDraft);
   if (typeof ResizeObserver !== "undefined") {
     chatResizeObserver = new ResizeObserver((entries) => {
@@ -2107,6 +2158,32 @@ async function focusChatInput() {
   window.requestAnimationFrame(() => {
     inputRef.value?.focusInput();
   });
+}
+
+async function compactCurrentContext() {
+  const sessionId = currSessionId.value;
+  if (!sessionId || sending.value) {
+    if (inputRef.value) inputRef.value.setCompressLoading(false);
+    return;
+  }
+  try {
+    const selection = getSelectedProviderSelection();
+    const response: any = await webuiExtApi.compressContext({
+      preferred_provider_id: selection.providerId || undefined,
+      selected_model: selection.modelName || undefined,
+    });
+    if (response.data?.status !== "ok") {
+      throw new Error(response.data?.message || "Compaction failed");
+    }
+    toast.success(tm("tokenUsage.done"));
+    await loadSessionMessages(sessionId, false, false);
+  } catch (error) {
+    toast.error(
+      `${tm("tokenUsage.failed")}: ${(error as Error)?.message || error}`,
+    );
+  } finally {
+    if (inputRef.value) inputRef.value.setCompressLoading(false);
+  }
 }
 
 async function stopCurrentSession() {

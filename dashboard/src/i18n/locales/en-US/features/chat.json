@@ -212,7 +212,16 @@
     "ttft": "Time to First Token"
   },
   "tokenUsage": {
-    "tooltip": "{used} / {limit} tokens ({percent}%)"
+    "tooltip": "{used} / {limit} tokens ({percent}%)",
+    "compress": "Compact context",
+    "compressHint": "Call the session's current model to compress conversation history into a summary and continue.",
+    "confirmTitle": "Compact the context?",
+    "confirmText": "After compaction the model will only see the summary; individual past turns will no longer be sent as context. The original history stays archived in the local database. This cannot be undone.",
+    "confirm": "Compact now",
+    "cancel": "Cancel",
+    "compressing": "Compacting…",
+    "done": "Context compacted",
+    "failed": "Compaction failed"
   },
   "refs": {
     "title": "References",

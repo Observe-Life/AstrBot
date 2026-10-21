@@ -212,7 +212,16 @@
     "ttft": "最初のトークンまでの時間"
   },
   "tokenUsage": {
-    "tooltip": "{used} / {limit} トークン（{percent}%）"
+    "tooltip": "{used} / {limit} トークン（{percent}%）",
+    "compress": "コンテキストを圧縮",
+    "compressHint": "現在のセッションのモデルを呼び出し、会話履歴を要約に圧縮して会話を続けます。",
+    "confirmTitle": "コンテキストを圧縮しますか？",
+    "confirmText": "圧縮後、モデルは要約のみを参照します。元の個別メッセージは今後コンテキストとして送信されません（元の記録はデータベースにアーカイブされます）。この操作は取り消せません。",
+    "confirm": "圧縮する",
+    "cancel": "キャンセル",
+    "compressing": "圧縮中…",
+    "done": "コンテキストを圧縮しました",
+    "failed": "圧縮に失敗しました"
   },
   "refs": {
     "title": "参照",

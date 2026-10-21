@@ -30,6 +30,7 @@ from .subagents import router as subagents_router
 from .t2i import router as t2i_router
 from .tools import router as tools_router
 from .updates import router as updates_router
+from .webui_ext import router as webui_ext_router
 
 API_V1_PREFIX = "/api/v1"
 
@@ -63,6 +64,7 @@ def build_api_router() -> APIRouter:
         updates_router,
         open_api_router,
         live_chat_router,
+        webui_ext_router,
     )
     for child_router in child_routers:
         for route in child_router.routes:

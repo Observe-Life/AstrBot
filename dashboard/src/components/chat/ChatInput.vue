@@ -261,12 +261,21 @@
             class="mr-1"
             width="1.5"
           />
-          <v-tooltip v-if="tokenUsageVisible" location="top" max-width="320">
-            <template #activator="{ props: tokenTooltipProps }">
+          <v-menu
+            v-if="tokenUsageVisible"
+            v-model="tokenUsageMenuOpen"
+            location="top end"
+            origin="bottom end"
+            :close-on-content-click="false"
+          >
+            <template #activator="{ props: tokenMenuProps }">
               <span
-                v-bind="tokenTooltipProps"
-                class="token-usage-indicator"
+                v-bind="tokenMenuProps"
+                class="token-usage-indicator token-usage-indicator--clickable"
                 :style="{ '--token-usage-color': tokenUsageColor }"
+                :aria-label="props.tokenUsage?.tooltip"
+                role="button"
+                tabindex="0"
               >
                 <v-progress-circular
                   :model-value="tokenUsagePercent"
@@ -276,8 +285,52 @@
                 />
               </span>
             </template>
-            <span>{{ props.tokenUsage?.tooltip }}</span>
-          </v-tooltip>
+            <div class="token-usage-card">
+              <span class="token-usage-card__stat">{{
+                props.tokenUsage?.tooltip
+              }}</span>
+              <template v-if="!tokenConfirmOpen">
+                <v-btn
+                  class="token-usage-card__action"
+                  color="primary"
+                  variant="tonal"
+                  size="small"
+                  block
+                  :loading="tokenCompressing"
+                  @click.stop="tokenConfirmOpen = true"
+                >
+                  {{ tm("tokenUsage.compress") }}
+                </v-btn>
+              </template>
+              <template v-else>
+                <span class="token-usage-card__confirm-title">{{
+                  tm("tokenUsage.confirmTitle")
+                }}</span>
+                <span class="token-usage-card__confirm-text">{{
+                  tm("tokenUsage.confirmText")
+                }}</span>
+                <div class="token-usage-card__confirm-actions">
+                  <v-btn
+                    size="small"
+                    variant="text"
+                    :disabled="tokenCompressing"
+                    @click.stop="resetTokenConfirm"
+                  >
+                    {{ tm("tokenUsage.cancel") }}
+                  </v-btn>
+                  <v-btn
+                    size="small"
+                    color="error"
+                    variant="tonal"
+                    :loading="tokenCompressing"
+                    @click.stop="requestCompress"
+                  >
+                    {{ tm("tokenUsage.confirm") }}
+                  </v-btn>
+                </div>
+              </template>
+            </div>
+          </v-menu>
           <v-btn
             @click="handleRecordClick"
             icon
@@ -422,6 +475,7 @@ const emit = defineEmits<{
   "update:prompt": [value: string];
   send: [];
   stop: [];
+  compressContext: [];
   openSettings: [];
   removeImage: [index: number];
   removeAudio: [];
@@ -654,6 +708,28 @@ function handleReplyAfterLeave() {
 }
 
 const { mobile } = useDisplay();
+
+const tokenUsageMenuOpen = ref(false);
+const tokenConfirmOpen = ref(false);
+const tokenCompressing = ref(false);
+
+function resetTokenConfirm() {
+  tokenConfirmOpen = false;
+}
+
+function requestCompress() {
+  tokenCompressing = true;
+  emit("compressContext");
+}
+// The parent decides when compaction actually finished and clears the loading
+// state through this exposed helper.
+function setCompressLoading(value: boolean) {
+  tokenCompressing = value;
+  if (!value) {
+    tokenConfirmOpen = false;
+    tokenUsageMenuOpen = false;
+  }
+}
 
 const tokenUsageVisible = computed(() => {
   const usage = props.tokenUsage;
@@ -959,6 +1035,7 @@ onBeforeUnmount(() => {
 defineExpose({
   getCurrentSelection,
   focusInput,
+  setCompressLoading,
 });
 </script>
 
@@ -1023,6 +1100,42 @@ defineExpose({
   flex: 0 0 20px;
   border-radius: 50%;
   color: var(--token-usage-color);
+}
+
+.token-usage-indicator--clickable {
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.token-usage-card {
+  display: grid;
+  gap: 10px;
+  max-width: 320px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow:
+    0 6px 20px rgba(0, 0, 0, 0.18),
+    0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.token-usage-card__stat {
+  font-size: 0.9rem;
+}
+
+.token-usage-card__confirm-title {
+  font-weight: 600;
+}
+
+.token-usage-card__confirm-text {
+  font-size: 0.82rem;
+  opacity: 0.8;
+}
+
+.token-usage-card__confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .token-usage-progress {
