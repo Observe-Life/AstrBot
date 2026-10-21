@@ -226,9 +226,12 @@ async def compact_chat_session(
     )
     # 通知消息携带合成的 agent_stats（current_context_tokens=压缩后估算），
     # 让「上下文已用比例圆环」立即反映压缩后的占用；下一轮真实对话后由真实统计接管。
+    # user_id 必须用裸 session_id：WebChat 的平台消息历史按「裸会话 ID」分区，
+    # 前端按 session_id 加载；用 conv.user_id（完整 UMO）会把通知插进另一个分区，
+    # 前端永远看不到，圆环也读不到它携带的统计。
     await db.insert_platform_message_history(
-        platform_id=conv.platform_id,
-        user_id=conv.user_id,
+        platform_id=session.platform_id,
+        user_id=session_id,
         content={
             "type": "bot",
             "message": [{"type": "plain", "text": stream_label}],
