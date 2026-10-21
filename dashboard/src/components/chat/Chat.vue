@@ -579,7 +579,6 @@ import { useProjects } from "@/composables/useProjects";
 import { useDragUpload } from "@/composables/useDragUpload";
 import { useProviderModelSelection } from "@/composables/useProviderModelSelection";
 import { useChatHeaderStore } from "@/stores/chatHeader";
-import { useAuthStore } from "@/stores/auth";
 import { useHeaderContextStore } from "@/stores/headerContext";
 import { useMobileDrawerStore } from "@/stores/mobileDrawer";
 import { useCustomizerStore } from "@/stores/customizer";
@@ -745,7 +744,6 @@ const settingsOpen = ref(false);
 const enableStreaming = ref(true);
 const enableReasoning = ref(true);
 const sendShortcut = ref<"enter" | "shift_enter">("enter");
-const authStore = useAuthStore();
 const CHAT_UI_SETTINGS_KEY = "chat_ui_settings";
 const persistedSendShortcuts = reactive<Record<string, string>>({});
 let chatSettingsSyncing = false;
@@ -756,7 +754,7 @@ function currentViewScope(): "mobile" | "desktop" {
 }
 
 async function applyPersistedSendShortcut() {
-  if (!authStore.isAuthenticated) return;
+  if (!localStorage.getItem("token")) return;
   try {
     const response: any = await webuiExtApi.getPreferences();
     if (response.data?.status !== "ok") return;
@@ -775,7 +773,7 @@ async function applyPersistedSendShortcut() {
 }
 
 watch(sendShortcut, (value) => {
-  if (chatSettingsSyncing || !authStore.isAuthenticated) return;
+  if (chatSettingsSyncing || !localStorage.getItem("token")) return;
   const view = currentViewScope();
   if (persistedSendShortcuts[view] === value) return;
   persistedSendShortcuts[view] = value;

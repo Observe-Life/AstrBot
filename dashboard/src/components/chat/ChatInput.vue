@@ -714,20 +714,20 @@ const tokenConfirmOpen = ref(false);
 const tokenCompressing = ref(false);
 
 function resetTokenConfirm() {
-  tokenConfirmOpen = false;
+  tokenConfirmOpen.value = false;
 }
 
 function requestCompress() {
-  tokenCompressing = true;
+  tokenCompressing.value = true;
   emit("compressContext");
 }
 // The parent decides when compaction actually finished and clears the loading
 // state through this exposed helper.
 function setCompressLoading(value: boolean) {
-  tokenCompressing = value;
+  tokenCompressing.value = value;
   if (!value) {
-    tokenConfirmOpen = false;
-    tokenUsageMenuOpen = false;
+    tokenConfirmOpen.value = false;
+    tokenUsageMenuOpen.value = false;
   }
 }
 

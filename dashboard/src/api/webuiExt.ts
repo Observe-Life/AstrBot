@@ -8,7 +8,7 @@ export interface CompressContextRequest {
   umo: string;
   cid: string;
   preferred_provider_id?: string;
-  model?: string;
+  selected_model?: string;
 }
 
 export interface CompressContextData {
