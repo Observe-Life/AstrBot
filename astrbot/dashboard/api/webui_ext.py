@@ -179,16 +179,23 @@ async def compact_chat_session(
         raise ApiError("模型没有返回摘要内容")
 
     compacted_at = datetime.now(timezone.utc).isoformat()
-    await db.insert_preference_or_update(
+    # 只保留第一次压缩的原始留底：重复压缩不覆盖，避免把最初原文冲掉。
+    existing_backup = await db.get_preference(
         CONVERSATION_BACKUP_SCOPE,
         cid,
         MANUAL_COMPACT_BACKUP_KEY,
-        {
-            "umo": umo,
-            "compacted_at": compacted_at,
-            "original_history": history,
-        },
     )
+    if existing_backup is None:
+        await db.insert_preference_or_update(
+            CONVERSATION_BACKUP_SCOPE,
+            cid,
+            MANUAL_COMPACT_BACKUP_KEY,
+            {
+                "umo": umo,
+                "compacted_at": compacted_at,
+                "original_history": history,
+            },
+        )
 
     new_history = [
         {
@@ -217,12 +224,22 @@ async def compact_chat_session(
         "原始完整记录仍保留在会话数据库中，可随时查看归档。\n"
         f"{summary}"
     )
+    # 通知消息携带合成的 agent_stats（current_context_tokens=压缩后估算），
+    # 让「上下文已用比例圆环」立即反映压缩后的占用；下一轮真实对话后由真实统计接管。
     await db.insert_platform_message_history(
         platform_id=conv.platform_id,
         user_id=conv.user_id,
         content={
             "type": "bot",
             "message": [{"type": "plain", "text": stream_label}],
+            "agent_stats": {
+                "token_usage": {
+                    "input_other": max(0, estimate - 64),
+                    "input_cached": 0,
+                    "output": 64,
+                },
+                "current_context_tokens": estimate,
+            },
         },
     )
 
