@@ -759,7 +759,8 @@ async function applyPersistedSendShortcut() {
     const response: any = await webuiExtApi.getPreferences();
     if (response.data?.status !== "ok") return;
     const prefs = response.data?.data?.preferences || {};
-    const stored = prefs[CHAT_UI_SETTINGS_KEY]?.sendShortcut || {};
+    // 保存的值就是「视图 -> 快捷键」映射本身，不要再套一层 sendShortcut 键
+    const stored = prefs[CHAT_UI_SETTINGS_KEY] || {};
     for (const key of Object.keys(stored)) persistedSendShortcuts[key] = stored[key];
     const value = persistedSendShortcuts[currentViewScope()];
     if (value === "enter" || value === "shift_enter") {
