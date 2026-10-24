@@ -873,7 +873,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 if llm_response.result_chain:
                     yield AgentResponse(
                         type="streaming_delta",
-                        data=AgentResponseData(chain=llm_response.result_chain),
+                        data=AgentResponseData(chain=self._deliver_chain(llm_response.result_chain)),
                     )
                 elif llm_response.completion_text:
                     # 门禁轮：completion 增量按 reasoning 形态流出（前端折叠显示），
@@ -966,7 +966,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         if llm_resp.result_chain:
             yield AgentResponse(
                 type="llm_result",
-                data=AgentResponseData(chain=llm_resp.result_chain),
+                data=AgentResponseData(chain=self._deliver_chain(llm_resp.result_chain)),
             )
         elif llm_resp.completion_text:
             # 门禁轮：最终结果也按 reasoning 形态投递，避免与流式折叠重复/冲突
@@ -1011,7 +1011,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     if llm_resp.result_chain:
                         yield AgentResponse(
                             type="llm_result",
-                            data=AgentResponseData(chain=llm_resp.result_chain),
+                            data=AgentResponseData(chain=self._deliver_chain(llm_resp.result_chain)),
                         )
                     elif llm_resp.completion_text:
                         # 门禁轮：同样按 reasoning 形态投递
@@ -1057,7 +1057,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         if chain:
                             yield AgentResponse(
                                 type="streaming_delta",
-                                data=AgentResponseData(chain=chain),
+                                data=AgentResponseData(chain=self._deliver_chain(chain)),
                             )
                     return
                 else:
@@ -1670,6 +1670,27 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
     def done(self) -> bool:
         """检查 Agent 是否已完成工作"""
         return self._state in (AgentState.DONE, AgentState.ERROR)
+
+    _TEXT_CHAIN_TYPES_EXEMPT = (
+        "reasoning",
+        "tool_call",
+        "tool_call_result",
+        "tool_direct_result",
+        "agent_stats",
+    )
+
+    def _deliver_chain(self, chain):
+        """门禁轮：文本类 chain 统一按 reasoning 形态投递（前端折叠显示，点开可见）。
+
+        工具卡片、工具结果等非文本类 chain 不受影响；正常轮原样投递。
+        """
+        if (
+            self._gate_round_active
+            and chain is not None
+            and getattr(chain, "type", None) not in self._TEXT_CHAIN_TYPES_EXEMPT
+        ):
+            chain.type = "reasoning"
+        return chain
 
     def resume_for_stop_check(self) -> None:
         """收工检查打回后重置状态，让同一轮继续下一次模型请求。"""
