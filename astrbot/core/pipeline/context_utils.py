@@ -132,7 +132,13 @@ async def collect_event_decisions(
         {"blocked": bool, "texts": list[str], "modified_args": dict | None,
          "fired": int}
     """
-    result: dict = {"blocked": False, "texts": [], "modified_args": None, "fired": 0}
+    result: dict = {
+        "blocked": False,
+        "texts": [],
+        "modified_args": None,
+        "fired": 0,
+        "stage": None,
+    }
     handlers = star_handlers_registry.get_handlers_by_event_type(
         hook_type,
         plugins_name=event.plugins_name,
@@ -160,6 +166,8 @@ async def collect_event_decisions(
                 result["blocked"] = True
                 if text:
                     result["texts"].append(text)
+                if not result["stage"] and ret.get("stage"):
+                    result["stage"] = str(ret.get("stage"))
             elif action == "modify" and not result["blocked"]:
                 modified = ret.get("tool_args")
                 if isinstance(modified, dict):

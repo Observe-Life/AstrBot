@@ -24,6 +24,7 @@ from astrbot.core.provider.entities import LLMResponse
 from astrbot.core.provider.provider import TTSProvider
 
 MAX_STOP_CHECK_CONTINUATIONS = 3
+MAX_GATE_BLOCKS_PER_STAGE = 3
 
 AgentRunner = ToolLoopAgentRunner[AstrAgentContext]
 
@@ -128,6 +129,8 @@ async def run_agent(
 ) -> AsyncGenerator[MessageChain | None, None]:
     step_idx = 0
     stop_check_continuations = 0
+    gate_stage_blocks: dict[str, int] = {}
+    gate_force_passed: set[str] = set()
     agent_runner._step_budget_max = max_step
     agent_runner._step_budget_used = 0
     agent_runner._step_budget_notified = set()
@@ -157,6 +160,49 @@ async def run_agent(
                         content=ToolLoopAgentRunner.MAX_STEPS_REACHED_PROMPT,
                     )
                 )
+
+        # 回答开始前门禁（泛用决策钩子）：每轮模型调用前触发。拦截时把要求文本
+        # 注入上下文（模型先完成要求的事，再回答）；同一阶段连续拦截达上限时
+        # 强制放行并记住该阶段，避免死循环。钩子异常时记录日志放行（fail-open）。
+        if agent_runner.run_context is not None:
+            _gate = await collect_event_decisions(
+                astr_event,
+                EventType.OnAnswerGateEvent,
+                agent_runner.run_context,
+            )
+            if _gate["blocked"]:
+                _stage = _gate["stage"] or "default"
+                if _stage in gate_force_passed:
+                    logger.info(
+                        "回答前门禁阶段 %s 已达拦截上限，本轮放行。", _stage
+                    )
+                else:
+                    _count = gate_stage_blocks.get(_stage, 0) + 1
+                    gate_stage_blocks[_stage] = _count
+                    if _count >= MAX_GATE_BLOCKS_PER_STAGE:
+                        gate_force_passed.add(_stage)
+                        logger.warning(
+                            "回答前门禁阶段 %s 连续拦截 %s 次，强制放行。",
+                            _stage,
+                            _count,
+                        )
+                    else:
+                        logger.warning(
+                            "回答前门禁拦截（阶段 %s，第 %s 次）：%s",
+                            _stage,
+                            _count,
+                            "；".join(_gate["texts"]),
+                        )
+                        agent_runner.run_context.messages.append(
+                            Message(
+                                role="user",
+                                content=(
+                                    "[回答前门禁] 请先完成以下要求，完成后在回复中确认，"
+                                    "再回答用户的真正问题。\n"
+                                    + "\n".join(_gate["texts"])
+                                ),
+                            )
+                        )
 
         stop_watcher = asyncio.create_task(
             _watch_agent_stop_signal(agent_runner, astr_event),

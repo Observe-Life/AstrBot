@@ -47,7 +47,6 @@ from astrbot.core.utils.session_lock import session_lock_manager
 
 from .....astr_agent_run_util import AgentRunner, run_agent, run_live_agent
 from ....context import PipelineContext, call_event_hook
-from astrbot.core.pipeline.context_utils import collect_event_decisions
 from ...follow_up import (
     FollowUpCapture,
     finalize_follow_up_capture,
@@ -308,24 +307,6 @@ class InternalAgentSubStage(Stage):
                     if await call_event_hook(event, EventType.OnLLMRequestEvent, req):
                         return
 
-                    # 回答开始前门禁（决策型钩子，泛用）：拦截时把要求文本注入上下文，
-                    # 模型第一轮先完成要求的事（如完整阅读技能文件，真实可观测），
-                    # 再回答用户的真正问题；真实行为由收工检查钩子核验。
-                    _gate = await collect_event_decisions(
-                        event, EventType.OnAnswerGateEvent, req
-                    )
-                    if _gate["blocked"]:
-                        req.contexts = list(req.contexts or [])
-                        req.contexts.append(
-                            {
-                                "role": "user",
-                                "content": (
-                                    "[回答前门禁] 在回答用户之前，请先完成以下要求；"
-                                    "完成后在回复中确认，再回答用户的真正问题。\n"
-                                    + "\n".join(_gate["texts"])
-                                ),
-                            }
-                        )
 
                     options = build_cfg.provider_settings.get(
                         "image_compress_options", {}
