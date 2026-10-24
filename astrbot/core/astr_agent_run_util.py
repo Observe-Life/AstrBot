@@ -170,11 +170,6 @@ async def run_agent(
                 EventType.OnAnswerGateEvent,
                 agent_runner.run_context,
             )
-            logger.info(
-                "[gate-debug] fired=%s blocked=%s stage=%s state_turns=%s",
-                _gate["fired"], _gate["blocked"], _gate["stage"],
-                len(agent_runner.run_context.messages),
-            )
             if _gate["blocked"]:
                 _verdict = gate_stage_blocks.on_block(
                     _gate["stage"], _gate["max_blocks"], _gate["over_limit"]
