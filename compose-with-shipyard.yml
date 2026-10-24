@@ -14,7 +14,7 @@ services:
       - TZ=Asia/Shanghai
     volumes:
       - ${PWD}/data:/AstrBot/data
-      # - /etc/timezone:/etc/timezone:ro
+      - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     networks:
       - astrbot_network

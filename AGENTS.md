@@ -1,3 +1,48 @@
+# 部署要点（本地维护，部署/重装前必读）
+
+> 本仓库是 `AstrBotDevs/AstrBot` 的本地长期维护 fork（默认分支 `4.29.0-customize`），
+> 包含本地改动：MCP 会话失效自动重连补丁、决策型钩子机制（OnAnswerGateEvent /
+> OnToolDecisionEvent / OnStopCheckEvent）、WebUI 扩展接口（`/api/v1/webui_preferences`
+> 与 `/api/v1/chat/sessions/{id}/compact`）。
+
+## 1. Compose 部署（推荐）
+
+- 用仓库根目录的 `compose.yml`（已配好：`TZ=Asia/Shanghai` + `/etc/localtime:ro`
+  + `/etc/timezone:ro` + 数据卷）。**时区三件套缺一不可**：只设 `TZ` 环境变量时，
+  只读系统时区文件的程序会按 UTC 走（差 8 小时）。
+- 自定义前端：构建产物放入 `custom-webui/`（含 `assets/version`，内容与核心版本一致），
+  compose 挂载 `-v ./custom-webui:/AstrBot/custom-webui:ro`，启动命令
+  `python main.py --webui-dir /AstrBot/custom-webui`。
+
+## 2. 本地改动的生效方式
+
+- 官方镜像（`soulter/astrbot`）不包含本分支的改动。部署后需要把改动文件
+  `docker cp` 进容器对应路径后重启；或从本分支构建自己的镜像。
+- 本分支相对官方 v4.29.0 的改动清单（见 git log）：
+  - `astrbot/core/agent/mcp_client.py`：MCP 会话失效自动重连补丁；
+  - `astrbot/core/agent/runners/tool_loop_agent_runner.py`、
+    `astrbot/core/astr_agent_run_util.py`、`astrbot/core/pipeline/context_utils.py`、
+    `astrbot/core/star/*`：决策型钩子机制；
+  - `astrbot/dashboard/api/webui_ext.py`、`astrbot/dashboard/api/router.py`：WebUI 扩展接口；
+  - `dashboard/`：自定义前端（发送快捷键持久化、上下文圆环小窗与压缩）。
+
+## 3. 构建方式
+
+- **前端**：GitHub Actions（`.github/workflows/dashboard_build_fork.yml`）——
+  推送 `4.29.0-customize` 自动触发，产物 artifact 名 `dist-fork`；本地构建需
+  pnpm + Node 24（`cd dashboard && pnpm install && pnpm run build`）。
+- **会话数据迁移**：用 SQLite 在线备份方式（`sqlite3` backup API）复制
+  `data_v4.db`，保证 WAL 一致性；另复制 `cmd_config.json`、`attachments/`、
+  `knowledge_base/`。
+
+## 4. 插件（astrbot_plugin_aegis）
+
+- 位置：`data/plugins/astrbot_plugin_aegis/`（随数据卷走）。
+- 决策钩子由该插件注册（回答前门禁 / 收工检查），开关在插件配置
+  （`answer_gate_enabled` / `stop_check_enabled` / `enforcement_log`）。
+
+---
+
 ## Setup commands
 
 ### Core
