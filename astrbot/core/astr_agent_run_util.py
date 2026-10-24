@@ -8,7 +8,7 @@ from astrbot.core import logger
 from astrbot.core.agent.message import Message
 from astrbot.core.agent.runners.tool_loop_agent_runner import ToolLoopAgentRunner
 from astrbot.core.agent.runners.base import AgentState
-from astrbot.core.pipeline.context_utils import collect_event_decisions
+from astrbot.core.pipeline.context_utils import StageBlockTracker, collect_event_decisions
 from astrbot.core.star.star_handler import EventType
 from astrbot.core.astr_agent_context import AstrAgentContext
 from astrbot.core.message.components import BaseMessageComponent, Json, Plain
@@ -24,7 +24,6 @@ from astrbot.core.provider.entities import LLMResponse
 from astrbot.core.provider.provider import TTSProvider
 
 MAX_STOP_CHECK_CONTINUATIONS = 3
-MAX_GATE_BLOCKS_PER_STAGE = 3
 
 AgentRunner = ToolLoopAgentRunner[AstrAgentContext]
 
@@ -129,8 +128,9 @@ async def run_agent(
 ) -> AsyncGenerator[MessageChain | None, None]:
     step_idx = 0
     stop_check_continuations = 0
-    gate_stage_blocks: dict[str, int] = {}
-    gate_force_passed: set[str] = set()
+    stop_check_total_limit = 3
+    stop_stage_tracker = StageBlockTracker()
+    gate_stage_blocks = StageBlockTracker()
     agent_runner._step_budget_max = max_step
     agent_runner._step_budget_used = 0
     agent_runner._step_budget_notified = set()
@@ -171,38 +171,37 @@ async def run_agent(
                 agent_runner.run_context,
             )
             if _gate["blocked"]:
-                _stage = _gate["stage"] or "default"
-                if _stage in gate_force_passed:
+                _verdict = gate_stage_blocks.on_block(
+                    _gate["stage"], _gate["max_blocks"], _gate["over_limit"]
+                )
+                if _verdict == "release":
                     logger.info(
-                        "回答前门禁阶段 %s 已达拦截上限，本轮放行。", _stage
+                        "回答前门禁阶段 %s 已达拦截上限，本轮放行。",
+                        _gate["stage"] or "default",
                     )
+                elif _verdict == "abort":
+                    logger.warning(
+                        "回答前门禁阶段 %s 达拦截上限且插件要求中断回答，终止本次回答。",
+                        _gate["stage"] or "default",
+                    )
+                    astr_event.set_extra("agent_gate_aborted", True)
+                    agent_runner.request_stop()
                 else:
-                    _count = gate_stage_blocks.get(_stage, 0) + 1
-                    gate_stage_blocks[_stage] = _count
-                    if _count >= MAX_GATE_BLOCKS_PER_STAGE:
-                        gate_force_passed.add(_stage)
-                        logger.warning(
-                            "回答前门禁阶段 %s 连续拦截 %s 次，强制放行。",
-                            _stage,
-                            _count,
+                    logger.warning(
+                        "回答前门禁拦截（阶段 %s）：%s",
+                        _gate["stage"] or "default",
+                        "；".join(_gate["texts"]),
+                    )
+                    agent_runner.run_context.messages.append(
+                        Message(
+                            role="user",
+                            content=(
+                                "[回答前门禁] 请先完成以下要求，完成后在回复中确认，"
+                                "再回答用户的真正问题。\n"
+                                + "\n".join(_gate["texts"])
+                            ),
                         )
-                    else:
-                        logger.warning(
-                            "回答前门禁拦截（阶段 %s，第 %s 次）：%s",
-                            _stage,
-                            _count,
-                            "；".join(_gate["texts"]),
-                        )
-                        agent_runner.run_context.messages.append(
-                            Message(
-                                role="user",
-                                content=(
-                                    "[回答前门禁] 请先完成以下要求，完成后在回复中确认，"
-                                    "再回答用户的真正问题。\n"
-                                    + "\n".join(_gate["texts"])
-                                ),
-                            )
-                        )
+                    )
 
         stop_watcher = asyncio.create_task(
             _watch_agent_stop_signal(agent_runner, astr_event),
@@ -367,11 +366,12 @@ async def run_agent(
                 except asyncio.CancelledError:
                     pass
             if agent_runner.done():
-                # 收工检查（泛用决策钩子）：模型交卷时核验本轮行为（如是否完成了
-                # 门禁要求、验证证据是否存在），不合格打回续跑，上限 3 次；
-                # 钩子异常时记录日志放行（fail-open），不卡死对话。
+                # 收工检查（泛用决策钩子）：模型交卷时核验本轮行为，不合格打回续跑。
+                # 总上限由插件在决策里声明（total_limit，默认 3）；阶段级拦截上限与
+                # 达限后的行为（放行/中断）同样由插件声明。钩子异常时记录日志放行
+                #（fail-open），不卡死对话。
                 if (
-                    stop_check_continuations < MAX_STOP_CHECK_CONTINUATIONS
+                    stop_check_continuations < stop_check_total_limit
                     and not agent_runner.was_aborted()
                     and agent_runner.get_final_llm_resp() is not None
                 ):
@@ -382,11 +382,34 @@ async def run_agent(
                         agent_runner,
                         stop_check_continuations,
                     )
+                    stop_check_total_limit = max(
+                        stop_check_total_limit, _stop_check["total_limit"]
+                    )
                     if _stop_check["blocked"]:
+                        _verdict = stop_stage_tracker.on_block(
+                            _stop_check["stage"],
+                            _stop_check["max_blocks"],
+                            _stop_check["over_limit"],
+                        )
+                        if _verdict == "abort":
+                            logger.warning(
+                                "收工检查阶段 %s 达拦截上限且插件要求中断回答，终止本次回答。",
+                                _stop_check["stage"] or "default",
+                            )
+                            astr_event.set_extra("agent_gate_aborted", True)
+                            agent_runner.request_stop()
+                            continue
+                        if _verdict == "release":
+                            logger.warning(
+                                "收工检查阶段 %s 已达拦截上限，放行收工。",
+                                _stop_check["stage"] or "default",
+                            )
+                            break
                         stop_check_continuations += 1
                         logger.warning(
-                            "收工检查打回续跑（第 %s 次）：%s",
+                            "收工检查打回续跑（第 %s 次，阶段 %s）：%s",
                             stop_check_continuations,
+                            _stop_check["stage"] or "default",
                             "；".join(_stop_check["texts"]),
                         )
                         agent_runner.run_context.messages.append(

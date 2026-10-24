@@ -479,10 +479,14 @@ def register_on_llm_response(**kwargs):
 def register_on_answer_gate(**kwargs):
     """回答开始前门禁（决策型钩子，泛用：任何插件可注册）
 
-    在每轮回答的第一轮 LLM 请求之前触发。钩子返回值约定：
+    在每轮模型调用之前触发。钩子返回值约定：
     - None / 无返回值：放行
     - str：拦截，字符串作为要求文本（将注入上下文，模型必须先完成要求的事）
-    - dict：{"action": "block"|"allow", "text": str}
+    - dict：{"action": "block"|"allow", "text": str, "stage": str,
+             "max_blocks": int, "over_limit": "release"|"abort"}
+      stage = 阶段标识（同一阶段共享拦截计数，问题数由插件自由决定）；
+      max_blocks = 本阶段拦截上限（默认 3）；
+      over_limit = 达上限后 "release"（本轮放行）或 "abort"（中断回答，敏感操作用）
 
     Examples:
     ```py
@@ -508,9 +512,12 @@ def register_on_tool_decision(**kwargs):
 
     在每次工具执行之前触发。钩子返回值约定：
     - None / 无返回值：放行
-    - str：拦截，字符串作为拦截原因（写进工具结果，模型可见）
+    - str：拦截（软拦截：同阶段达上限后放行执行），字符串作为拦截原因
     - dict：{"action": "block"|"deny"|"allow"|"modify", "text": str,
-             "tool_args": dict}（modify 时提供替换后的完整参数）
+             "tool_args": dict, "stage": str, "max_blocks": int,
+             "over_limit": "release"|"abort"}
+      over_limit="release" = 达上限后放行执行；"abort" = 中断回答（敏感操作用）；
+      modify 时提供替换后的完整参数
 
     Examples:
     ```py
@@ -534,10 +541,14 @@ def register_on_tool_decision(**kwargs):
 def register_on_stop_check(**kwargs):
     """收工检查（决策型钩子，泛用：任何插件可注册）
 
-    在模型即将完成回复时触发（每轮最多打回 3 次）。钩子返回值约定：
+    在模型即将完成回复时触发。钩子返回值约定：
     - None / 无返回值：放行收工
     - str：打回，字符串作为反馈文本（注入模型上下文，强制再来一轮）
-    - dict：{"action": "block"|"allow", "text": str}
+    - dict：{"action": "block"|"allow", "text": str, "stage": str,
+             "max_blocks": int, "over_limit": "release"|"abort",
+             "total_limit": int}
+      total_limit = 整轮续跑总上限（默认 3，由插件决定）；
+      stage/max_blocks/over_limit 含义同回答前门禁
 
     参数：event, response（最终回复）, agent_runner（可查本轮工具调用）,
     continuation_count（已打回次数）

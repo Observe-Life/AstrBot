@@ -138,6 +138,9 @@ async def collect_event_decisions(
         "modified_args": None,
         "fired": 0,
         "stage": None,
+        "max_blocks": 3,
+        "over_limit": "release",
+        "total_limit": 3,
     }
     handlers = star_handlers_registry.get_handlers_by_event_type(
         hook_type,
@@ -168,9 +171,47 @@ async def collect_event_decisions(
                     result["texts"].append(text)
                 if not result["stage"] and ret.get("stage"):
                     result["stage"] = str(ret.get("stage"))
+                if ret.get("max_blocks") is not None:
+                    try:
+                        result["max_blocks"] = max(1, int(ret.get("max_blocks")))
+                    except (TypeError, ValueError):
+                        pass
+                if str(ret.get("over_limit", "")).lower() in ("release", "abort"):
+                    result["over_limit"] = str(ret.get("over_limit")).lower()
+                if ret.get("total_limit") is not None:
+                    try:
+                        result["total_limit"] = max(1, int(ret.get("total_limit")))
+                    except (TypeError, ValueError):
+                        pass
             elif action == "modify" and not result["blocked"]:
                 modified = ret.get("tool_args")
                 if isinstance(modified, dict):
                     result["modified_args"] = modified
             # allow / 未知动作：不覆盖其他钩子的决策
     return result
+
+class StageBlockTracker:
+    """按阶段计数的拦截上限追踪（泛用，三个决策节点共用）。
+
+    插件在决策里声明 stage（阶段标识）、max_blocks（本阶段拦截上限，默认 3）、
+    over_limit（达上限后 "release"=本轮放行 或 "abort"=中断回答）。
+    机制只负责计数与裁决，不管业务：阶段数与问题数由插件自由决定。
+    """
+
+    def __init__(self) -> None:
+        self.counts: dict[str, int] = {}
+        self.released: set[str] = set()
+
+    def on_block(self, stage: str | None, max_blocks: int, over_limit: str) -> str:
+        """登记一次拦截，返回裁决："block"（正常拦截注入）| "release"（超限放行）| "abort"（应中断）。"""
+        key = stage or "default"
+        if key in self.released:
+            return "release"
+        count = self.counts.get(key, 0) + 1
+        self.counts[key] = count
+        if count >= max(1, int(max_blocks or 3)):
+            if str(over_limit or "release").lower() == "abort":
+                return "abort"
+            self.released.add(key)
+            return "release"
+        return "block"

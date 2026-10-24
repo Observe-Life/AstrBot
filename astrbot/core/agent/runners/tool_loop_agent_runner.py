@@ -46,7 +46,7 @@ from astrbot.core.provider.modalities import (
     sanitize_contexts_by_modalities,
 )
 from astrbot.core.provider.provider import Provider
-from astrbot.core.pipeline.context_utils import collect_event_decisions
+from astrbot.core.pipeline.context_utils import StageBlockTracker, collect_event_decisions
 from astrbot.core.star.star_handler import EventType
 from astrbot.core.utils.async_generator import iterate_in_task
 
@@ -281,6 +281,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self._state = AgentState.IDLE
         self.tool_executor = tool_executor
         self.agent_hooks = agent_hooks
+        self._stage_block_tracker = StageBlockTracker()
         self.run_context = run_context
         self._aborted = False
         self._abort_signal = asyncio.Event()
@@ -1299,14 +1300,37 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     )
                     if _tool_decision["blocked"]:
                         _block_reason = "；".join(_tool_decision["texts"])
-                        logger.warning(
-                            f"工具 {func_tool_name} 被决策钩子拦截：{_block_reason}",
+                        _verdict = self._stage_block_tracker.on_block(
+                            _tool_decision["stage"],
+                            _tool_decision["max_blocks"],
+                            _tool_decision["over_limit"],
                         )
-                        _append_tool_call_result(
-                            func_tool_id,
-                            f"error: Blocked by plugin hook: {_block_reason}",
-                        )
-                        continue
+                        if _verdict == "abort":
+                            logger.warning(
+                                f"工具 {func_tool_name} 拦截阶段 "
+                                f"{_tool_decision['stage'] or 'default'} 达上限且插件要求中断回答。",
+                            )
+                            self.request_stop()
+                            _append_tool_call_result(
+                                func_tool_id,
+                                f"error: Blocked by plugin hook (over-limit abort): {_block_reason}",
+                            )
+                            continue
+                        if _verdict == "release":
+                            logger.warning(
+                                f"工具 {func_tool_name} 拦截阶段 "
+                                f"{_tool_decision['stage'] or 'default'} 已达上限，放行执行。",
+                            )
+                        else:
+                            logger.warning(
+                                f"工具 {func_tool_name} 被决策钩子拦截（阶段 "
+                                f"{_tool_decision['stage'] or 'default'}）：{_block_reason}",
+                            )
+                            _append_tool_call_result(
+                                func_tool_id,
+                                f"error: Blocked by plugin hook: {_block_reason}",
+                            )
+                            continue
                     if _tool_decision["modified_args"] is not None:
                         _modified = _tool_decision["modified_args"]
                         if (
