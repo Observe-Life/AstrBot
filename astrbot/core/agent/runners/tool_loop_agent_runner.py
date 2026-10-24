@@ -920,6 +920,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     )
                 ),
             )
+            # 门禁轮的折叠只作用于模型对门禁问题的直接回答（本步第一个完整响应）；
+            # 之后的工具延续与正式回答恢复正常投递，避免正文被折叠。
+            if self._gate_round_active:
+                self._gate_round_active = False
             break  # got final response
 
         if self._is_stop_requested():
