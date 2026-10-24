@@ -969,12 +969,23 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 data=AgentResponseData(chain=llm_resp.result_chain),
             )
         elif llm_resp.completion_text:
-            yield AgentResponse(
-                type="llm_result",
-                data=AgentResponseData(
-                    chain=MessageChain().message(llm_resp.completion_text),
-                ),
-            )
+            # 门禁轮：最终结果也按 reasoning 形态投递，避免与流式折叠重复/冲突
+            if self._gate_round_active:
+                yield AgentResponse(
+                    type="llm_result",
+                    data=AgentResponseData(
+                        chain=MessageChain(type="reasoning").message(
+                            llm_resp.completion_text,
+                        ),
+                    ),
+                )
+            else:
+                yield AgentResponse(
+                    type="llm_result",
+                    data=AgentResponseData(
+                        chain=MessageChain().message(llm_resp.completion_text),
+                    ),
+                )
 
         # 如果有工具调用，还需处理工具调用
         if llm_resp.tools_call_name:
@@ -1003,12 +1014,23 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                             data=AgentResponseData(chain=llm_resp.result_chain),
                         )
                     elif llm_resp.completion_text:
-                        yield AgentResponse(
-                            type="llm_result",
-                            data=AgentResponseData(
-                                chain=MessageChain().message(llm_resp.completion_text),
-                            ),
-                        )
+                        # 门禁轮：同样按 reasoning 形态投递
+                        if self._gate_round_active:
+                            yield AgentResponse(
+                                type="llm_result",
+                                data=AgentResponseData(
+                                    chain=MessageChain(type="reasoning").message(
+                                        llm_resp.completion_text,
+                                    ),
+                                ),
+                            )
+                        else:
+                            yield AgentResponse(
+                                type="llm_result",
+                                data=AgentResponseData(
+                                    chain=MessageChain().message(llm_resp.completion_text),
+                                ),
+                            )
 
                     await self._complete_with_assistant_response(llm_resp)
                     # Re-query uses text_chat(), so its reply has no stream chunks.
