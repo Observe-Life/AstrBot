@@ -197,7 +197,18 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
             )
         if llm_resp.completion_text:
-            parts.append(TextPart(text=llm_resp.completion_text))
+            if self._gate_round_active:
+                # 门禁轮：completion 文本并入思考部分（前端折叠显示，点开可见），
+                # completion_text 本身保留，不影响循环逻辑与门禁评估。
+                gate_think = (
+                    (llm_resp.reasoning_content or "")
+                    + ("\n" if llm_resp.reasoning_content else "")
+                    + "[门禁] "
+                    + llm_resp.completion_text
+                )
+                parts.append(ThinkPart(think=gate_think))
+            else:
+                parts.append(TextPart(text=llm_resp.completion_text))
         if len(parts) == 0:
             logger.warning("LLM returned empty assistant message with no tool calls.")
         self.run_context.messages.append(Message(role="assistant", content=parts))
@@ -282,6 +293,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.tool_executor = tool_executor
         self.agent_hooks = agent_hooks
         self._stage_block_tracker = StageBlockTracker()
+        # 门禁轮标记：True 时本步的模型回复按「思考」形态投递与保存（折叠显示），
+        # 由 run_agent 在门禁注入/放行时切换；不影响正常轮的进度汇报。
+        self._gate_round_active = False
         self.run_context = run_context
         self._aborted = False
         self._abort_signal = asyncio.Event()
@@ -862,12 +876,24 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         data=AgentResponseData(chain=llm_response.result_chain),
                     )
                 elif llm_response.completion_text:
-                    yield AgentResponse(
-                        type="streaming_delta",
-                        data=AgentResponseData(
-                            chain=MessageChain().message(llm_response.completion_text),
-                        ),
-                    )
+                    # 门禁轮：completion 增量按 reasoning 形态流出（前端折叠显示），
+                    # 正常轮的进度汇报保持原样（不折叠）。
+                    if self._gate_round_active:
+                        yield AgentResponse(
+                            type="streaming_delta",
+                            data=AgentResponseData(
+                                chain=MessageChain(type="reasoning").message(
+                                    llm_response.completion_text,
+                                ),
+                            ),
+                        )
+                    else:
+                        yield AgentResponse(
+                            type="streaming_delta",
+                            data=AgentResponseData(
+                                chain=MessageChain().message(llm_response.completion_text),
+                            ),
+                        )
                 if self._is_stop_requested():
                     break
                 continue

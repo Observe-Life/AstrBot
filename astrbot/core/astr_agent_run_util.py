@@ -128,7 +128,7 @@ async def run_agent(
 ) -> AsyncGenerator[MessageChain | None, None]:
     step_idx = 0
     stop_check_continuations = 0
-    stop_check_total_limit = 3
+    stop_check_total_limit = 9
     stop_stage_tracker = StageBlockTracker()
     gate_stage_blocks = StageBlockTracker()
     agent_runner._step_budget_max = max_step
@@ -202,6 +202,12 @@ async def run_agent(
                             ),
                         )
                     )
+                    # 本步是门禁轮：模型对该要求的回复按「思考」形态投递与保存（折叠），
+                    # 正常轮的进度汇报不受影响。
+                    agent_runner._gate_round_active = True
+            elif _gate["fired"] > 0:
+                # 门禁放行：之后恢复正常投递形态
+                agent_runner._gate_round_active = False
 
         stop_watcher = asyncio.create_task(
             _watch_agent_stop_signal(agent_runner, astr_event),
@@ -382,9 +388,9 @@ async def run_agent(
                         agent_runner,
                         stop_check_continuations,
                     )
-                    stop_check_total_limit = max(
-                        stop_check_total_limit, _stop_check["total_limit"]
-                    )
+                    if _stop_check["total_limit"] is not None:
+                        # 插件声明的整轮总上限覆盖默认值（9）
+                        stop_check_total_limit = _stop_check["total_limit"]
                     if _stop_check["blocked"]:
                         _verdict = stop_stage_tracker.on_block(
                             _stop_check["stage"],

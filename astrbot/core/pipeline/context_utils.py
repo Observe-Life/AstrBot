@@ -140,7 +140,7 @@ async def collect_event_decisions(
         "stage": None,
         "max_blocks": 3,
         "over_limit": "release",
-        "total_limit": 3,
+        "total_limit": None,
     }
     handlers = star_handlers_registry.get_handlers_by_event_type(
         hook_type,
