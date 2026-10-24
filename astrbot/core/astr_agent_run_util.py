@@ -179,6 +179,8 @@ async def run_agent(
                         "回答前门禁阶段 %s 已达拦截上限，本轮放行。",
                         _gate["stage"] or "default",
                     )
+                    # 强制放行后恢复正常投递形态，避免正文被折叠
+                    agent_runner._gate_round_active = False
                 elif _verdict == "abort":
                     logger.warning(
                         "回答前门禁阶段 %s 达拦截上限且插件要求中断回答，终止本次回答。",
