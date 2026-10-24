@@ -5,9 +5,6 @@
 name: Mark stale bug issues
 
 on:
-  schedule:
-    # 每天 UTC 08:30 执行 (北京时间 16:30)
-    - cron: '30 8 * * *'
   workflow_dispatch:
     inputs:
       dry-run:
