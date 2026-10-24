@@ -235,6 +235,9 @@ class EventType(enum.Enum):
     OnCallingFuncToolEvent = enum.auto()  # 调用函数工具
     OnUsingLLMToolEvent = enum.auto()  # 使用 LLM 工具
     OnLLMToolRespondEvent = enum.auto()  # 调用函数工具后
+    OnAnswerGateEvent = enum.auto()  # 回答开始前门禁（决策型：拦截时插件返回要求文本）
+    OnToolDecisionEvent = enum.auto()  # 工具执行前决策（决策型：拦截/改参数）
+    OnStopCheckEvent = enum.auto()  # 收工检查（决策型：打回续跑）
     OnAfterMessageSentEvent = enum.auto()  # 发送消息后
     OnPluginErrorEvent = enum.auto()  # 插件处理消息异常时
     OnPluginLoadedEvent = enum.auto()  # 插件加载完成

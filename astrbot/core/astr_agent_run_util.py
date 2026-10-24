@@ -7,6 +7,9 @@ from collections.abc import AsyncGenerator
 from astrbot.core import logger
 from astrbot.core.agent.message import Message
 from astrbot.core.agent.runners.tool_loop_agent_runner import ToolLoopAgentRunner
+from astrbot.core.agent.runners.base import AgentState
+from astrbot.core.pipeline.context_utils import collect_event_decisions
+from astrbot.core.star.star_handler import EventType
 from astrbot.core.astr_agent_context import AstrAgentContext
 from astrbot.core.message.components import BaseMessageComponent, Json, Plain
 from astrbot.core.message.message_event_result import (
@@ -19,6 +22,8 @@ from astrbot.core.persona_error_reply import (
 )
 from astrbot.core.provider.entities import LLMResponse
 from astrbot.core.provider.provider import TTSProvider
+
+MAX_STOP_CHECK_CONTINUATIONS = 3
 
 AgentRunner = ToolLoopAgentRunner[AstrAgentContext]
 
@@ -122,6 +127,7 @@ async def run_agent(
     buffer_intermediate_messages: bool = False,
 ) -> AsyncGenerator[MessageChain | None, None]:
     step_idx = 0
+    stop_check_continuations = 0
     agent_runner._step_budget_max = max_step
     agent_runner._step_budget_used = 0
     agent_runner._step_budget_notified = set()
@@ -315,6 +321,39 @@ async def run_agent(
                 except asyncio.CancelledError:
                     pass
             if agent_runner.done():
+                # 收工检查（泛用决策钩子）：模型交卷时核验本轮行为（如是否完成了
+                # 门禁要求、验证证据是否存在），不合格打回续跑，上限 3 次；
+                # 钩子异常时记录日志放行（fail-open），不卡死对话。
+                if (
+                    stop_check_continuations < MAX_STOP_CHECK_CONTINUATIONS
+                    and not agent_runner.was_aborted()
+                    and agent_runner.get_final_llm_resp() is not None
+                ):
+                    _stop_check = await collect_event_decisions(
+                        astr_event,
+                        EventType.OnStopCheckEvent,
+                        agent_runner.get_final_llm_resp(),
+                        agent_runner,
+                        stop_check_continuations,
+                    )
+                    if _stop_check["blocked"]:
+                        stop_check_continuations += 1
+                        logger.warning(
+                            "收工检查打回续跑（第 %s 次）：%s",
+                            stop_check_continuations,
+                            "；".join(_stop_check["texts"]),
+                        )
+                        agent_runner.run_context.messages.append(
+                            Message(
+                                role="user",
+                                content=(
+                                    "[收工检查] 你的回复未通过收工检查，请先按要求完成后再回答：\n"
+                                    + "\n".join(_stop_check["texts"])
+                                ),
+                            )
+                        )
+                        agent_runner.resume_for_stop_check()
+                        continue
                 break
 
         except Exception as e:

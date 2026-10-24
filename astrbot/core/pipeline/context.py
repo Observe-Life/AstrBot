@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from astrbot.core.config import AstrBotConfig
 
-from .context_utils import call_event_hook, call_handler
+from .context_utils import call_event_hook, call_handler, collect_event_decisions
 
 if TYPE_CHECKING:
     from astrbot.core.db import BaseDatabase
@@ -22,3 +22,4 @@ class PipelineContext:
     db_helper: BaseDatabase | None = None
     call_handler = call_handler
     call_event_hook = call_event_hook
+    collect_event_decisions = collect_event_decisions

@@ -46,6 +46,8 @@ from astrbot.core.provider.modalities import (
     sanitize_contexts_by_modalities,
 )
 from astrbot.core.provider.provider import Provider
+from astrbot.core.pipeline.context_utils import collect_event_decisions
+from astrbot.core.star.star_handler import EventType
 from astrbot.core.utils.async_generator import iterate_in_task
 
 from ..context.compressor import ContextCompressor
@@ -1285,6 +1287,44 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 except Exception as e:
                     logger.error(f"Error in on_tool_start hook: {e}", exc_info=True)
 
+                # 工具执行前决策钩子（泛用）：拦截时跳过执行并把原因写进工具结果
+                #（模型下一轮能看到被拦的原因）；改参数时重新过滤到 schema 允许的参数。
+                _decision_event = getattr(self.run_context.context, "event", None)
+                if _decision_event is not None:
+                    _tool_decision = await collect_event_decisions(
+                        _decision_event,
+                        EventType.OnToolDecisionEvent,
+                        func_tool,
+                        valid_params,
+                    )
+                    if _tool_decision["blocked"]:
+                        _block_reason = "；".join(_tool_decision["texts"])
+                        logger.warning(
+                            f"工具 {func_tool_name} 被决策钩子拦截：{_block_reason}",
+                        )
+                        _append_tool_call_result(
+                            func_tool_id,
+                            f"error: Blocked by plugin hook: {_block_reason}",
+                        )
+                        continue
+                    if _tool_decision["modified_args"] is not None:
+                        _modified = _tool_decision["modified_args"]
+                        if (
+                            func_tool.handler
+                            and func_tool.parameters
+                            and func_tool.parameters.get("properties")
+                        ):
+                            _expected = set(
+                                func_tool.parameters["properties"].keys()
+                            )
+                            valid_params = {
+                                k: v
+                                for k, v in _modified.items()
+                                if k in _expected
+                            }
+                        else:
+                            valid_params = _modified
+
                 executor = self.tool_executor.execute(
                     tool=func_tool,
                     run_context=self.run_context,
@@ -1552,6 +1592,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
     def done(self) -> bool:
         """检查 Agent 是否已完成工作"""
         return self._state in (AgentState.DONE, AgentState.ERROR)
+
+    def resume_for_stop_check(self) -> None:
+        """收工检查打回后重置状态，让同一轮继续下一次模型请求。"""
+        self.final_llm_resp = None
+        self._transition_state(AgentState.IDLE)
 
     def request_stop(self) -> None:
         self._abort_signal.set()

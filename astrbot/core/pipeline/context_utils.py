@@ -110,3 +110,59 @@ async def call_event_hook(
             return True
 
     return event.is_stopped()
+
+async def collect_event_decisions(
+    event: AstrMessageEvent,
+    hook_type: EventType,
+    *args,
+    **kwargs,
+) -> dict:
+    """调用决策型事件钩子并聚合各插件的决策（泛用机制，任何插件可注册）。
+
+    钩子返回值约定：
+    - None / 无返回值：放行（不发表意见）
+    - str：拦截，字符串作为拦截原因 / 要求文本
+    - dict：{"action": "block"|"deny"|"allow"|"modify", "text": str,
+             "tool_args": dict}（modify 时提供替换后的完整参数）
+
+    聚合规则（对齐 ZCode 的决策优先级）：任一拦截即拦截（deny/block 优先），
+    拦截文本合并；无拦截时若有 modify 则采用改参数；allow 不覆盖其他钩子的拦截。
+
+    Returns:
+        {"blocked": bool, "texts": list[str], "modified_args": dict | None,
+         "fired": int}
+    """
+    result: dict = {"blocked": False, "texts": [], "modified_args": None, "fired": 0}
+    handlers = star_handlers_registry.get_handlers_by_event_type(
+        hook_type,
+        plugins_name=event.plugins_name,
+    )
+    for handler in handlers:
+        try:
+            assert inspect.iscoroutinefunction(handler.handler)
+            logger.debug(
+                f"decision hook({hook_type.name}) -> "
+                f"{star_map[handler.handler_module_path].name} - "
+                f"{handler.handler_name}",
+            )
+            ret = await handler.handler(event, *args, **kwargs)
+            result["fired"] += 1
+        except BaseException:
+            logger.error(traceback.format_exc())
+            continue
+        if isinstance(ret, str) and ret.strip():
+            result["blocked"] = True
+            result["texts"].append(ret.strip())
+        elif isinstance(ret, dict):
+            action = str(ret.get("action", "")).lower()
+            text = str(ret.get("text", "") or "").strip()
+            if action in ("block", "deny"):
+                result["blocked"] = True
+                if text:
+                    result["texts"].append(text)
+            elif action == "modify" and not result["blocked"]:
+                modified = ret.get("tool_args")
+                if isinstance(modified, dict):
+                    result["modified_args"] = modified
+            # allow / 未知动作：不覆盖其他钩子的决策
+    return result

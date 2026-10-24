@@ -476,6 +476,90 @@ def register_on_llm_response(**kwargs):
     return decorator
 
 
+def register_on_answer_gate(**kwargs):
+    """回答开始前门禁（决策型钩子，泛用：任何插件可注册）
+
+    在每轮回答的第一轮 LLM 请求之前触发。钩子返回值约定：
+    - None / 无返回值：放行
+    - str：拦截，字符串作为要求文本（将注入上下文，模型必须先完成要求的事）
+    - dict：{"action": "block"|"allow", "text": str}
+
+    Examples:
+    ```py
+    @on_answer_gate()
+    async def test(self, event: AstrMessageEvent, req: ProviderRequest):
+        if 需要门禁:
+            return "请先完整阅读 skills/xxx/SKILL.md 并在回复中确认。"
+    ```
+
+    请务必接收两个参数：event, req
+
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnAnswerGateEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_tool_decision(**kwargs):
+    """工具执行前决策（决策型钩子，泛用：任何插件可注册）
+
+    在每次工具执行之前触发。钩子返回值约定：
+    - None / 无返回值：放行
+    - str：拦截，字符串作为拦截原因（写进工具结果，模型可见）
+    - dict：{"action": "block"|"deny"|"allow"|"modify", "text": str,
+             "tool_args": dict}（modify 时提供替换后的完整参数）
+
+    Examples:
+    ```py
+    @on_tool_decision()
+    async def test(self, event: AstrMessageEvent, tool, tool_args):
+        if tool.name == "dangerous_tool":
+            return "该工具已被插件禁用"
+    ```
+
+    请务必接收三个参数：event, tool, tool_args
+
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnToolDecisionEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+def register_on_stop_check(**kwargs):
+    """收工检查（决策型钩子，泛用：任何插件可注册）
+
+    在模型即将完成回复时触发（每轮最多打回 3 次）。钩子返回值约定：
+    - None / 无返回值：放行收工
+    - str：打回，字符串作为反馈文本（注入模型上下文，强制再来一轮）
+    - dict：{"action": "block"|"allow", "text": str}
+
+    参数：event, response（最终回复）, agent_runner（可查本轮工具调用）,
+    continuation_count（已打回次数）
+
+    Examples:
+    ```py
+    @on_stop_check()
+    async def test(self, event, response, agent_runner, continuation_count):
+        if 验证不通过 and continuation_count < 3:
+            return "请先运行测试并确认通过后再结束。"
+    ```
+
+    """
+
+    def decorator(awaitable):
+        _ = get_handler_or_create(awaitable, EventType.OnStopCheckEvent, **kwargs)
+        return awaitable
+
+    return decorator
+
+
+
 def register_on_agent_begin(**kwargs):
     """当 Agent 开始运行时的事件
 
