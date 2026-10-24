@@ -189,6 +189,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.stats.end_time = time.time()
 
         parts = []
+        gate_folded = self._gate_round_active
         if llm_resp.reasoning_content is not None or llm_resp.reasoning_signature:
             parts.append(
                 ThinkPart(
@@ -197,7 +198,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
             )
         if llm_resp.completion_text:
-            if self._gate_round_active:
+            if gate_folded:
                 # 门禁轮：completion 文本并入思考部分（前端折叠显示，点开可见），
                 # completion_text 本身保留，不影响循环逻辑与门禁评估。
                 gate_think = (
@@ -212,6 +213,10 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         if len(parts) == 0:
             logger.warning("LLM returned empty assistant message with no tool calls.")
         self.run_context.messages.append(Message(role="assistant", content=parts))
+        # 记录本步投递/保存时是否处于门禁轮（折叠），供收工检查判断正文是否被折叠；
+        # 清除标记：本步已结束，之后恢复正常投递形态。
+        self._last_response_gate_folded = gate_folded
+        self._gate_round_active = False
 
         try:
             await self.agent_hooks.on_agent_done(self.run_context, llm_resp)
@@ -920,10 +925,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                     )
                 ),
             )
-            # 门禁轮的折叠只作用于模型对门禁问题的直接回答（本步第一个完整响应）；
-            # 之后的工具延续与正式回答恢复正常投递，避免正文被折叠。
-            if self._gate_round_active:
-                self._gate_round_active = False
             break  # got final response
 
         if self._is_stop_requested():
@@ -1203,6 +1204,9 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         )
 
             self.req.append_tool_calls_result(tool_calls_result)
+            # 工具路径步末：记录本步是否门禁轮（折叠）并清除标记
+            self._last_response_gate_folded = self._gate_round_active
+            self._gate_round_active = False
 
     async def step_until_done(
         self, max_step: int
