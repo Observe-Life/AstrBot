@@ -1047,7 +1047,13 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                             )
                         chain = llm_resp.result_chain
                         if not chain and llm_resp.completion_text:
-                            chain = MessageChain().message(llm_resp.completion_text)
+                            # 门禁轮：补偿流式投递也按 reasoning 形态（前端折叠）
+                            if self._gate_round_active:
+                                chain = MessageChain(type="reasoning").message(
+                                    llm_resp.completion_text,
+                                )
+                            else:
+                                chain = MessageChain().message(llm_resp.completion_text)
                         if chain:
                             yield AgentResponse(
                                 type="streaming_delta",
