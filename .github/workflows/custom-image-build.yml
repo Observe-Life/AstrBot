@@ -1,8 +1,6 @@
 name: Custom Image Build
 
 on:
-  push:
-    branches: ["4.29.0-customize"]
   workflow_dispatch:
 
 permissions:
