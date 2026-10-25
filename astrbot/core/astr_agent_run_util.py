@@ -179,8 +179,6 @@ async def run_agent(
                         "回答前门禁阶段 %s 已达拦截上限，本轮放行。",
                         _gate["stage"] or "default",
                     )
-                    # 强制放行后恢复正常投递形态，避免正文被折叠
-                    agent_runner._gate_round_active = False
                 elif _verdict == "abort":
                     logger.warning(
                         "回答前门禁阶段 %s 达拦截上限且插件要求中断回答，终止本次回答。",
@@ -204,12 +202,6 @@ async def run_agent(
                             ),
                         )
                     )
-                    # 本步是门禁轮：模型对该要求的回复按「思考」形态投递与保存（折叠），
-                    # 正常轮的进度汇报不受影响。
-                    agent_runner._gate_round_active = True
-            elif _gate["fired"] > 0:
-                # 门禁放行：之后恢复正常投递形态
-                agent_runner._gate_round_active = False
 
         stop_watcher = asyncio.create_task(
             _watch_agent_stop_signal(agent_runner, astr_event),

@@ -189,7 +189,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.stats.end_time = time.time()
 
         parts = []
-        gate_folded = self._gate_round_active
         if llm_resp.reasoning_content is not None or llm_resp.reasoning_signature:
             parts.append(
                 ThinkPart(
@@ -198,25 +197,11 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 )
             )
         if llm_resp.completion_text:
-            if gate_folded:
-                # 门禁轮：completion 文本并入思考部分（前端折叠显示，点开可见），
-                # completion_text 本身保留，不影响循环逻辑与门禁评估。
-                gate_think = (
-                    (llm_resp.reasoning_content or "")
-                    + ("\n" if llm_resp.reasoning_content else "")
-                    + "[门禁] "
-                    + llm_resp.completion_text
-                )
-                parts.append(ThinkPart(think=gate_think))
-            else:
-                parts.append(TextPart(text=llm_resp.completion_text))
+            parts.append(TextPart(text=llm_resp.completion_text))
         if len(parts) == 0:
             logger.warning("LLM returned empty assistant message with no tool calls.")
         self.run_context.messages.append(Message(role="assistant", content=parts))
-        # 记录本步投递/保存时是否处于门禁轮（折叠），供收工检查判断正文是否被折叠；
-        # 清除标记：本步已结束，之后恢复正常投递形态。
-        self._last_response_gate_folded = gate_folded
-        self._gate_round_active = False
+        self._last_response_gate_folded = False
 
         try:
             await self.agent_hooks.on_agent_done(self.run_context, llm_resp)
@@ -298,9 +283,6 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
         self.tool_executor = tool_executor
         self.agent_hooks = agent_hooks
         self._stage_block_tracker = StageBlockTracker()
-        # 门禁轮标记：True 时本步的模型回复按「思考」形态投递与保存（折叠显示），
-        # 由 run_agent 在门禁注入/放行时切换；不影响正常轮的进度汇报。
-        self._gate_round_active = False
         self.run_context = run_context
         self._aborted = False
         self._abort_signal = asyncio.Event()
@@ -881,24 +863,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         data=AgentResponseData(chain=self._deliver_chain(llm_response.result_chain)),
                     )
                 elif llm_response.completion_text:
-                    # 门禁轮：completion 增量按 reasoning 形态流出（前端折叠显示），
-                    # 正常轮的进度汇报保持原样（不折叠）。
-                    if self._gate_round_active:
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(
-                                chain=MessageChain(type="reasoning").message(
-                                    llm_response.completion_text,
-                                ),
-                            ),
-                        )
-                    else:
-                        yield AgentResponse(
-                            type="streaming_delta",
-                            data=AgentResponseData(
-                                chain=MessageChain().message(llm_response.completion_text),
-                            ),
-                        )
+                    yield AgentResponse(
+                        type="streaming_delta",
+                        data=AgentResponseData(
+                            chain=MessageChain().message(llm_response.completion_text),
+                        ),
+                    )
                 if self._is_stop_requested():
                     break
                 continue
@@ -974,23 +944,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                 data=AgentResponseData(chain=self._deliver_chain(llm_resp.result_chain)),
             )
         elif llm_resp.completion_text:
-            # 门禁轮：最终结果也按 reasoning 形态投递，避免与流式折叠重复/冲突
-            if self._gate_round_active:
-                yield AgentResponse(
-                    type="llm_result",
-                    data=AgentResponseData(
-                        chain=MessageChain(type="reasoning").message(
-                            llm_resp.completion_text,
-                        ),
-                    ),
-                )
-            else:
-                yield AgentResponse(
-                    type="llm_result",
-                    data=AgentResponseData(
-                        chain=MessageChain().message(llm_resp.completion_text),
-                    ),
-                )
+            yield AgentResponse(
+                type="llm_result",
+                data=AgentResponseData(
+                    chain=MessageChain().message(llm_resp.completion_text),
+                ),
+            )
 
         # 如果有工具调用，还需处理工具调用
         if llm_resp.tools_call_name:
@@ -1019,23 +978,12 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                             data=AgentResponseData(chain=self._deliver_chain(llm_resp.result_chain)),
                         )
                     elif llm_resp.completion_text:
-                        # 门禁轮：同样按 reasoning 形态投递
-                        if self._gate_round_active:
-                            yield AgentResponse(
-                                type="llm_result",
-                                data=AgentResponseData(
-                                    chain=MessageChain(type="reasoning").message(
-                                        llm_resp.completion_text,
-                                    ),
-                                ),
-                            )
-                        else:
-                            yield AgentResponse(
-                                type="llm_result",
-                                data=AgentResponseData(
-                                    chain=MessageChain().message(llm_resp.completion_text),
-                                ),
-                            )
+                        yield AgentResponse(
+                            type="llm_result",
+                            data=AgentResponseData(
+                                chain=MessageChain().message(llm_resp.completion_text),
+                            ),
+                        )
 
                     await self._complete_with_assistant_response(llm_resp)
                     # Re-query uses text_chat(), so its reply has no stream chunks.
@@ -1052,13 +1000,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                             )
                         chain = llm_resp.result_chain
                         if not chain and llm_resp.completion_text:
-                            # 门禁轮：补偿流式投递也按 reasoning 形态（前端折叠）
-                            if self._gate_round_active:
-                                chain = MessageChain(type="reasoning").message(
-                                    llm_resp.completion_text,
-                                )
-                            else:
-                                chain = MessageChain().message(llm_resp.completion_text)
+                            chain = MessageChain().message(llm_resp.completion_text)
                         if chain:
                             yield AgentResponse(
                                 type="streaming_delta",
@@ -1204,9 +1146,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
                         )
 
             self.req.append_tool_calls_result(tool_calls_result)
-            # 工具路径步末：记录本步是否门禁轮（折叠）并清除标记
-            self._last_response_gate_folded = self._gate_round_active
-            self._gate_round_active = False
+            self._last_response_gate_folded = False
 
     async def step_until_done(
         self, max_step: int
@@ -1688,16 +1628,7 @@ class ToolLoopAgentRunner(BaseAgentRunner[TContext]):
     )
 
     def _deliver_chain(self, chain):
-        """门禁轮：文本类 chain 统一按 reasoning 形态投递（前端折叠显示，点开可见）。
-
-        工具卡片、工具结果等非文本类 chain 不受影响；正常轮原样投递。
-        """
-        if (
-            self._gate_round_active
-            and chain is not None
-            and getattr(chain, "type", None) not in self._TEXT_CHAIN_TYPES_EXEMPT
-        ):
-            chain.type = "reasoning"
+        # 门禁轮折叠已废弃（fix/remove-gate-fold），原样返回。
         return chain
 
     def resume_for_stop_check(self) -> None:
