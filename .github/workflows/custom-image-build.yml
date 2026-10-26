@@ -56,5 +56,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/observe-life/astrbot:4.29.0-customize
-            ghcr.io/observe-life/astrbot:customize-latest
+            ghcr.io/observe-life/astrbot:4.29.0-clean
+            ghcr.io/observe-life/astrbot:clean-latest
