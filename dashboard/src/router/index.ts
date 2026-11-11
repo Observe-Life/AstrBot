@@ -43,7 +43,19 @@ interface AuthStore {
   has_token(): boolean;
 }
 
+/* 手机与安卓壳：默认落列表页（四标签框架），不进后台管理首页 */
+function isMobileLikeViewport(): boolean {
+  const native = Boolean(
+    (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })
+      .Capacitor?.isNativePlatform?.(),
+  );
+  return native || window.innerWidth < 961;
+}
+
 router.beforeEach(async (to, from, next) => {
+  if ((to.path === '/' || to.path === '/welcome') && isMobileLikeViewport()) {
+    return next('/list');
+  }
   if (from.name && from.path !== to.path) {
     const loadingStore = useRouterLoadingStore();
     loadingStore.start();

@@ -50,7 +50,18 @@ export const useAuthStore = defineStore("auth", {
         router.push('/auth/setup');
         return;
       }
-      if (onboardingCompleted) {
+      /* 手机与安卓壳登录后直接进四标签列表页；桌面端维持原行为 */
+      const mobileLike =
+        Boolean(
+          (
+            window as unknown as {
+              Capacitor?: { isNativePlatform?: () => boolean };
+            }
+          ).Capacitor?.isNativePlatform?.(),
+        ) || window.innerWidth < 961;
+      if (mobileLike) {
+        router.push('/list');
+      } else if (onboardingCompleted) {
         router.push('/dashboard/default');
       } else {
         router.push('/welcome');
