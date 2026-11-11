@@ -106,9 +106,20 @@ jobs:
           ( cd dashboard/dist && zip -qr "${GITHUB_WORKSPACE}/artifacts/custom-webui.zip" . )
 
           # 代码包（后端源码 + 烘入的 dist）
-          tar --exclude=.git --exclude=node_modules --exclude=artifacts \
-              --exclude=dashboard/dist --exclude=astrbot/dashboard/dist.orig \
+          # 注意：tar 的 --exclude 默认非锚定，写成 dashboard/dist 会连
+          # astrbot/dashboard/dist 一起排掉，所以这里必须 anchored + 带 ./ 前缀
+          tar --anchored \
+              --exclude=./.git --exclude=./artifacts \
+              --exclude=./dashboard/dist --exclude=./dashboard/node_modules \
               -czf artifacts/astrbot-custom-code.tar.gz .
+
+          # 自检：代码包里必须带上前端产物，否则装出来的镜像前端是旧的
+          baked=$(tar tzf artifacts/astrbot-custom-code.tar.gz | grep -c 'astrbot/dashboard/dist/')
+          echo "代码包内 astrbot/dashboard/dist 条目数：$baked"
+          if [ "$baked" -lt 10 ]; then
+            echo "::error title=代码包缺少前端产物::astrbot/dashboard/dist 没有被打进包里"
+            exit 1
+          fi
 
           ls -lh artifacts deps-fingerprint.txt
 
