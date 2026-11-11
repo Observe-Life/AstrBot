@@ -3711,17 +3711,16 @@ async function stopCurrentSession() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
+  overflow-anchor: auto;
+  padding: 24px 0 calc(var(--chat-composer-height, 82px) + 34px);
+  scroll-padding-bottom: calc(var(--chat-composer-height, 82px) + 34px);
   position: relative;
   scrollbar-width: none;
 }
 .messages-panel::-webkit-scrollbar {
   width: 0;
   height: 0;
-}
-  overscroll-behavior-y: contain;
-  overflow-anchor: auto;
-  padding: 24px 0 calc(var(--chat-composer-height, 82px) + 34px);
-  scroll-padding-bottom: calc(var(--chat-composer-height, 82px) + 34px);
 }
 
 .messages-panel.history-anchor-locked {

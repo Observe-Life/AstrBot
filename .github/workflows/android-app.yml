@@ -35,6 +35,22 @@ jobs:
           ref: ${{ inputs.ref || '4.29.0-customize' }}
           fetch-depth: 0
 
+      - name: 前置闸门（同提交的网页包必须已构建成功）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RESULT=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow custom-build.yml \
+            --commit "${{ github.sha }}" --limit 1 --json status,conclusion \
+            --jq '.[0] | "\(.status) \(.conclusion)"' 2>/dev/null || true)
+          echo "同提交的网页包构建：${RESULT:-未找到}"
+          case "$RESULT" in
+            "completed success") echo "闸门通过：网页包已全绿" ;;
+            *)
+              echo "::error::网页包尚未构建成功（${RESULT:-未找到}）。先触发 Custom Build 并等它全绿，再出安卓包。"
+              exit 1
+              ;;
+          esac
+
       - name: 安装 Java 21（安卓构建，Capacitor 8 要求）
         uses: actions/setup-java@v4
         with:
