@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, reactive, ref, type Ref } from "vue";
 import { useI18n } from "@/i18n/composables";
 import { chatApi, fileApi } from "@/api/v1";
 import { isNativeApp } from "@/composables/useServerAddress";
-import { nativeStreamRequest } from "@/api/nativeStream";
+import { nativeStreamRequest, type NativeStreamResponse } from "@/api/nativeStream";
 import { fetchWithAuth } from "@/api/http";
 import type { Session } from "@/composables/useSessions";
 
@@ -837,7 +837,7 @@ export function useMessages(options: UseMessagesOptions) {
         processStreamPayload(botRecord, payload, userRecord, connection);
         options.onStreamUpdate?.(sessionId);
       });
-    } catch (error) {
+    } catch (error: any) {
       if (!abort.signal.aborted) {
         ensureBotRecordVisible(connection);
         appendPlain(botRecord, `\n\n${String(error?.message || error)}`);
@@ -879,21 +879,24 @@ export function useMessages(options: UseMessagesOptions) {
       ) {
         let retryable = true;
         try {
-          const response = isNativeApp()
-            ? await nativeStreamRequest(`/api/v1/chat/runs/${encodeURIComponent(runId)}/stream`, {
+          let response: Response | NativeStreamResponse;
+          let contentType: string;
+          if (isNativeApp()) {
+            response = await nativeStreamRequest(
+              `/api/v1/chat/runs/${encodeURIComponent(runId)}/stream`,
+              {
                 headers: { Accept: "text/event-stream" },
                 signal: abort.signal,
-              })
-            : await fetchWithAuth(
-                chatApi.resumeRunStreamUrl(runId),
-                {
-                  headers: { Accept: "text/event-stream" },
-                  signal: abort.signal,
-                },
-              );
-          const contentType = isNativeApp()
-            ? "text/event-stream"
-            : response.headers.get("content-type") || "";
+              },
+            );
+            contentType = "text/event-stream";
+          } else {
+            response = await fetchWithAuth(chatApi.resumeRunStreamUrl(runId), {
+              headers: { Accept: "text/event-stream" },
+              signal: abort.signal,
+            });
+            contentType = response.headers.get("content-type") || "";
+          }
           if (
             !response.ok ||
             !response.body ||

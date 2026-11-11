@@ -26,10 +26,14 @@ interface NativeStreamOptions {
   signal?: AbortSignal;
 }
 
+type CapacitorGlobal = {
+  isNativePlatform?: () => boolean;
+  Plugins?: { StreamHttp?: unknown };
+};
+
 export function isNativeStreamAvailable(): boolean {
-  return Boolean(
-    window.Capacitor?.isNativePlatform?.() && window.Capacitor?.Plugins?.StreamHttp,
-  );
+  const cap = (window as unknown as { Capacitor?: CapacitorGlobal }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.() && cap?.Plugins?.StreamHttp);
 }
 
 /** 相对 API 路径 → 服务器绝对地址（fetchWithAuth 没做这件事，这里必须补上） */
