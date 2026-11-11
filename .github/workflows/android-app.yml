@@ -35,11 +35,11 @@ jobs:
           ref: ${{ inputs.ref || '4.29.0-customize' }}
           fetch-depth: 0
 
-      - name: 安装 Java 17（安卓构建）
+      - name: 安装 Java 21（安卓构建，Capacitor 8 要求）
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: 安装 pnpm
         uses: pnpm/action-setup@v6.1.0
