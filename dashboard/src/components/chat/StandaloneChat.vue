@@ -250,6 +250,7 @@ import {
   type TransportMode,
 } from "@/composables/useMessages";
 import type { Session } from "@/composables/useSessions";
+import { isNativeApp } from "@/composables/useServerAddress";
 import { useModuleI18n } from "@/i18n/composables";
 import { useCustomizerStore } from "@/stores/customizer";
 import { buildWebchatUmoDetails } from "@/utils/chatConfigBinding";
@@ -314,7 +315,9 @@ const {
   },
 });
 
+// app 壳内：CapacitorHttp 原生拦截层不支持 SSE 流式响应，对话必须走 WebSocket
 const transportMode = ref<TransportMode>(
+  isNativeApp() ||
   (localStorage.getItem("chat.transportMode") as TransportMode) === "websocket"
     ? "websocket"
     : "sse",
