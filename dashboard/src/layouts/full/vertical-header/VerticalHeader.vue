@@ -16,7 +16,7 @@ import "katex/dist/katex.min.css";
 import "highlight.js/styles/github.css";
 import { useI18n, useModuleI18n } from "@/i18n/composables";
 import { router } from "@/router";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useDisplay, useTheme } from "vuetify";
 import StyledMenu from "@/components/shared/StyledMenu.vue";
 import { Menu } from "@lucide/vue";
@@ -38,6 +38,13 @@ const chatHeader = useChatHeaderStore();
 const headerContext = useHeaderContextStore();
 const mobileDrawer = useMobileDrawerStore();
 const uiPanels = useUiPanelsStore();
+const router = useRouter();
+
+/* 后台页面右上角「去对话」：手机端登录后落后台首页，没有底部标签栏，
+   需要这个入口回到对话界面（/session，手机四标签框架）。 */
+function goToChat() {
+  void router.push("/session");
+}
 
 /** Windows hides the native title bar, so the header draws its own caption buttons. */
 const isWindowsDesktop = ref(false);
@@ -1135,6 +1142,19 @@ onMounted(async () => {
     </div>
 
     <div class="header-actions" :class="{ 'chat-header-actions': isChatPath }">
+      <v-btn
+        v-if="!isChatPath"
+        class="chat-entry-btn"
+        variant="text"
+        size="small"
+        icon
+        title="去对话"
+        aria-label="去对话"
+        @click="goToChat"
+      >
+        <v-icon size="22">mdi-chat-outline</v-icon>
+      </v-btn>
+
       <v-btn
         v-if="isChatPath && chatHeader.projectId"
         class="chat-action-btn workspace-files-trigger"
