@@ -18,9 +18,7 @@
   - （五）注意事项
 - 四、首次配置
   - （一）账号与密钥
-  - （二）必做项
-  - （三）插件
-  - （四）会话数据迁移
+  - （二）会话数据迁移
 - 五、日常使用
   - （一）访问入口
   - （二）浏览器测试
@@ -111,17 +109,7 @@
 1. WebUI 地址 `http://<服务器>:6185`。账号已不是默认值，凭据只存服务器本地，不写进仓库和本文档。
 2. JWT 密钥在 `data/cmd_config.json` 的 `dashboard.jwt_secret`。该文件带 BOM，脚本读取要用 `utf-8-sig`；自签测试令牌时载荷字段是 `username`。
 
-### （二）必做项
-
-1. 配置 AI 模型、配置平台机器人（WebUI 快速引导）。
-2. 「允许 Agent 使用电脑」按需要开，默认不允许。
-
-### （三）插件
-
-1. `astrbot_plugin_aegis` 位于 `data/plugins/astrbot_plugin_aegis/`，随数据卷走。
-2. 决策钩子由它注册（回答前门禁 / 收工检查），开关在插件配置：`answer_gate_enabled`、`stop_check_enabled`、`enforcement_log`。
-
-### （四）会话数据迁移
+### （二）会话数据迁移
 
 1. `data_v4.db` 必须用 SQLite 在线备份 API 复制，保证 WAL 一致性；直接 `cp` 会拿到不一致的库。
 2. 同时复制 `cmd_config.json`、`attachments/`、`knowledge_base/`。
