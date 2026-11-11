@@ -989,9 +989,9 @@ defineExpose({ getCurrentSelection });
 .provider-trigger--input {
   height: 40px;
   max-width: min(280px, 42vw);
-  padding: 0 12px;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.18);
-  border-radius: 999px;
+  padding: 0 8px;
+  border: 0; /* 去掉椭圆环 */
+  border-radius: 8px;
 }
 
 .provider-trigger--input:hover {

@@ -217,8 +217,16 @@ function parseJsonSafe(value: unknown) {
 
 .reasoning-step {
   min-width: 0;
-  font-size: 14.5px;
+  font-size: 1rem; /* 与回答正文字号一致 */
   line-height: 1.62;
+}
+
+/* markstream 内部用自己的变量定字号（这里是 13px），必须把它拉回正文字号 */
+.reasoning-step :deep(.reasoning-text),
+.reasoning-step .reasoning-text {
+  --ms-text-body: 1rem !important;
+  --ms-leading-body: 1.62 !important;
+  font-size: 1rem !important;
 }
 
 .reasoning-step-meta {

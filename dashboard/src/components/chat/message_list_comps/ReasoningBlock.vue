@@ -212,7 +212,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .reasoning-block {
-  margin: 6px 0;
+  /* 间距交给相邻段落自己的 margin（各 12px），避免叠加后比段间距大 */
+  margin: 0;
   max-width: 100%;
   color: rgba(var(--v-theme-on-surface), 0.7);
   font-size: inherit;
@@ -299,7 +300,7 @@ onBeforeUnmount(() => {
   -webkit-line-clamp: 3;
   white-space: pre-line;
   font: inherit;
-  font-size: 14.5px;
+  font-size: 1rem; /* 与回答正文字号一致 */
   line-height: 1.62;
   font-style: normal;
 }

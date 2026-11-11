@@ -318,6 +318,8 @@ onMounted(async () => {
     await setSelection(stored);
     await syncSelectionForSession();
 });
+
+defineExpose({ openDialog });
 </script>
 
 <style scoped>

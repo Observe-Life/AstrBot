@@ -299,8 +299,13 @@ const MainRoutes = {
     //   ]
     // },
     {
-      name: 'Chat',
-      path: '/chat',
+      name: 'ChatList',
+      path: '/list',
+      component: () => import('@/views/ChatPage.vue')
+    },
+    {
+      name: 'ChatSession',
+      path: '/session',
       component: () => import('@/views/ChatPage.vue'),
       children: [
         {
@@ -308,12 +313,40 @@ const MainRoutes = {
           name: 'ChatDetail',
           component: () => import('@/views/ChatPage.vue'),
           props: true
+        },
+        {
+          path: 'models',
+          name: 'ChatModels',
+          component: () => import('@/views/ChatPage.vue')
         }
       ]
     },
     {
-      name: 'Settings',
+      name: 'ChatExtend',
+      path: '/extend',
+      component: () => import('@/views/ChatPage.vue')
+    },
+    {
+      name: 'ChatSettings',
       path: '/settings',
+      component: () => import('@/views/ChatPage.vue')
+    },
+    {
+      path: '/chat',
+      redirect: '/session'
+    },
+    {
+      path: '/chat/:rest(.*)*',
+      redirect: (to: any) => {
+        const rest = Array.isArray(to.params.rest)
+          ? to.params.rest.join('/')
+          : (to.params.rest || '');
+        return rest ? `/session/${rest}` : '/session';
+      }
+    },
+    {
+      name: 'Settings',
+      path: '/settings-admin',
       component: () => import('@/views/Settings.vue')
     },
     {

@@ -948,6 +948,7 @@ function formatDuration(seconds: number) {
   display: flex;
   flex-direction: column;
   gap: 22px;
+  padding-inline: 0; /* 气泡到屏幕左右 11.9px 由外层容器提供 */
 }
 
 .message-row {
@@ -1125,17 +1126,56 @@ function formatDuration(seconds: number) {
 }
 
 .message-bubble.user {
-  color: var(--v-theme-primaryText);
-  padding: 12px 18px;
+  /* 豆包实测：蓝 #0166FF、白字、圆角 12.3px、气泡高约 47px */
+  color: #ffffff;
+  padding: 10px 16px;
   font-size: 15px;
   max-width: 100%;
-  border-radius: 16px;
-  background: rgba(var(--v-theme-primary), 0.16);
+  border-radius: 12px;
+  background: rgb(1, 102, 255); /* RGB 1,102,255 */
 }
 
 .message-bubble.bot {
-  background: transparent;
-  padding-left: 0;
+  /* 豆包实测：浅灰卡片、圆角 13px、文字距卡片左右 17px */
+  background: rgb(247, 247, 247); /* 豆包同款 RGB 247,247,247 */
+  /* 上 14 / 左右 17 / 下 16：配合末尾块下外边距归零，
+     使最后一行文字的墨迹到气泡下边缘约 20px（与顶部视觉一致） */
+  padding: 14px 17px 16px;
+  border-radius: 13px;
+}
+
+/* 思考过程与回答正文之间加一条分隔线，样式与正文里的 markdown 分隔线一致
+   （1px、surface 10% 透明度、上下各 16px）。只作用于最后一轮思考之后的正文，
+   中间“思考→阶段汇报”的过渡保持原样。 */
+.message-bubble.bot
+  :deep(.message-content-layer:has(.reasoning-block) > .markdown-content:last-of-type) {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+}
+
+/* 分隔线下方第一段不保留自带上外边距，让线上下间距对称（各约 16px + 行盒留白） */
+.message-bubble.bot
+  :deep(
+    .message-content-layer:has(.reasoning-block)
+      > .markdown-content:last-of-type
+      > .chat-markdown
+      > .node-slot:first-child
+      [class$="-node"]
+  ) {
+  margin-top: 0;
+}
+
+/* 末尾内容块不保留自带的下外边距，避免它与底部内边距叠加 */
+.message-bubble.bot
+  :deep(
+    .message-content-layer
+      > .markdown-content:last-child
+      > .chat-markdown
+      > :last-child
+      [class$="-node"]
+  ) {
+  margin-bottom: 0;
 }
 
 .plain-content {
@@ -1178,7 +1218,7 @@ function formatDuration(seconds: number) {
 }
 
 .chat-message-list :deep(.markdown-content p) {
-  margin: 0.25rem 0;
+  margin: 12px 0; /* 与 markstream 路径一致：段间视觉 ≈24px */
 }
 
 .unknown-part {
@@ -1473,7 +1513,7 @@ function formatDuration(seconds: number) {
   }
 
   .message-bubble.bot {
-    padding-inline: 0;
+    padding-inline: 17px;
   }
 }
 

@@ -9,6 +9,8 @@ import { useCustomizerStore } from "@/stores/customizer";
 import { useRouterLoadingStore } from "@/stores/routerLoading";
 import { useCommonStore } from "@/stores/common";
 import { useMobileDrawerStore } from "@/stores/mobileDrawer";
+import { useUiPanelsStore } from "@/stores/uiPanels";
+import { useChatHeaderStore } from "@/stores/chatHeader";
 import { statsApi } from "@/api/v1";
 import { useI18n } from "@/i18n/composables";
 
@@ -17,12 +19,29 @@ const FIRST_NOTICE_SEEN_KEY = "astrbot:first_notice_seen:v1";
 const customizer = useCustomizerStore();
 const commonStore = useCommonStore();
 const mobileDrawer = useMobileDrawerStore();
+const uiPanels = useUiPanelsStore();
+
+/* 顶栏在列表/扩展/设置页和空会话里会收成 0，页面高度要相应补回来，否则底部会多出一条灰条 */
+const chatHeader = useChatHeaderStore();
+const hasChatTitle = computed(
+  () => !!(chatHeader.title.trim() || chatHeader.subtitle.trim()),
+);
+const chatHeaderOffset = computed(() => {
+  if (!isCurrentChatRoute.value) return 40;
+  if (uiPanels.activeChatTab !== "chat") return 0;
+  return hasChatTitle.value ? 40 : 0;
+});
 const { locale } = useI18n();
 const route = useRoute();
 const routerLoadingStore = useRouterLoadingStore();
-const isCurrentChatRoute = computed(
-  () => route.path === "/chat" || route.path.startsWith("/chat/"),
-);
+/* 聊天区四个标签页各自一个路径，刷新后仍停在该页 */
+const CHAT_TAB_BASES = ["/list", "/session", "/extend", "/settings", "/chat"];
+const isCurrentChatRoute = computed(() => {
+  const path = route.path;
+  return CHAT_TAB_BASES.some(
+    (base) => path === base || path.startsWith(`${base}/`),
+  );
+});
 const isPluginViewRoute = computed(
   () => route.path.startsWith("/plugin-view/") || route.path.startsWith("/plugin-page/"),
 );
@@ -34,7 +53,7 @@ const isViewportLockedRoute = computed(
     isProviderPageRoute.value ||
     isPlatformPageRoute.value ||
     route.path === "/config" ||
-    route.path === "/settings",
+    route.path === "/settings-admin",
 );
 const isFullScreenRoute = computed(
   () => isCurrentChatRoute.value || isPluginViewRoute.value,
@@ -133,6 +152,7 @@ onMounted(() => {
         <v-container
           fluid
           class="page-wrapper"
+          :style="{ '--astrbot-toolbar-height': `${chatHeaderOffset}px` }"
           :class="{
             'chat-mode-container': isCurrentChatRoute,
             'viewport-locked-container':
@@ -233,6 +253,11 @@ onMounted(() => {
    follows the rounded corner instead of cutting across the notch. */
 :global(html:not([data-astrbot-desktop-platform='macos']) .page-wrapper) {
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.1);
+}
+
+/* 聊天页不再有侧边栏，顶部这条 1px 横线会变成一条突兀的白带分隔线 */
+:global(html:not([data-astrbot-desktop-platform='macos']) .page-wrapper.chat-mode-container) {
+  border-top: 0;
 }
 
 .page-content {

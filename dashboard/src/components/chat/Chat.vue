@@ -2,107 +2,70 @@
   <div
     v-if="props.active"
     class="chat-ui"
-    :class="{ 'is-dark': isDark, 'sidebar-collapsed': isSidebarCollapsed }"
+    :class="{
+      'is-dark': isDark,
+      'sidebar-collapsed': isSidebarCollapsed,
+      'is-wide': isWide,
+    }"
   >
-    <v-navigation-drawer
-      class="chat-sidebar"
-      :class="{ collapsed: isSidebarCollapsed }"
-      :model-value="isMobile ? mobileDrawer.open : true"
-      @update:model-value="isMobile && mobileDrawer.SET($event)"
-      :permanent="!isMobile"
-      :temporary="isMobile"
-      :mobile-breakpoint="0"
-      :rail="isSidebarCollapsed"
-      :width="245"
-      :rail-width="56"
-      location="left"
-      floating
+    <div
+      class="chat-tab-content"
+      @touchstart.passive="onTabSwipeStart"
+      @touchend.passive="onTabSwipeEnd"
     >
-      <div class="sidebar-top">
-        <div
-          class="chat-sidebar-brand"
-          :class="{ collapsed: isSidebarCollapsed }"
-          data-tauri-drag-region
-        >
-          <div
-            v-if="!isSidebarCollapsed"
-            class="chat-sidebar-brand-title Outfit"
-          >
-            <ChatUILogo class="chat-sidebar-brand-logo" />
-            <span class="chat-sidebar-brand-copy">
-              <span class="chat-sidebar-brand-name">AstrBot</span>
-              <span class="chat-sidebar-brand-mode">ChatUI</span>
-            </span>
-          </div>
-          <button
-            v-if="isSidebarCollapsed"
-            class="chat-sidebar-brand-toggle chat-sidebar-rail-btn"
-            type="button"
-            aria-label="Toggle sidebar"
-            @click.stop="toggleChatSidebar"
-          >
-            <span class="chat-sidebar-rail-icon-stack">
-              <ChatUILogo
-                class="chat-sidebar-brand-logo chat-sidebar-brand-logo--collapsed"
-              />
-              <PanelLeft :size="20" class="sidebar-panel-toggle-icon" />
-            </span>
-          </button>
-          <v-btn
-            v-else
-            class="chat-sidebar-brand-toggle"
-            icon
-            rounded="sm"
-            variant="text"
-            :ripple="false"
-            @click.stop="toggleChatSidebar"
-          >
-            <PanelLeft :size="20" class="sidebar-panel-toggle-icon" />
-          </v-btn>
-        </div>
-
-        <button
-          v-if="isSidebarCollapsed"
-          class="new-chat-btn sidebar-provider-btn icon-only chat-sidebar-rail-btn"
-          :class="{ 'sidebar-workspace-btn--active': isProviderWorkspace }"
-          type="button"
-          :title="tm('actions.providerConfig')"
-          @click="openProviderWorkspace"
-        >
-          <Box :size="18" class="sidebar-action-icon" />
+    <section
+      v-if="activeTab === 'list' || isWide"
+      class="chat-tab chat-tab--list"
+      :class="tabAnimClass"
+    >
+      <div class="list-header">
+        <button class="list-search" type="button" @click="openSearch">
+          <Search :size="18" class="list-search-icon" />
+          <span class="list-search-text">搜索</span>
         </button>
-        <v-btn
-          v-else
-          class="new-chat-btn sidebar-provider-btn"
-          :class="{ 'sidebar-workspace-btn--active': isProviderWorkspace }"
-          variant="text"
-          @click="openProviderWorkspace"
-        >
-          <Box :size="18" class="sidebar-action-icon mr-2" />
-          <span>{{ tm("actions.providerConfig") }}</span>
-        </v-btn>
-
         <button
-          v-if="isSidebarCollapsed"
-          class="new-chat-btn icon-only chat-sidebar-rail-btn"
+          class="list-create"
           type="button"
-          :title="tm('actions.newChat')"
+          aria-label="创建会话"
           @click="startNewChat"
         >
-          <SquarePen :size="18" class="sidebar-action-icon" />
+          <SquarePen :size="22" />
         </button>
-        <v-btn v-else class="new-chat-btn" variant="text" @click="startNewChat">
-          <SquarePen :size="18" class="sidebar-action-icon mr-2" />
-          <span>{{ tm("actions.newChat") }}</span>
-        </v-btn>
       </div>
+      <div class="tab-list-inner">
+        <div
+          ref="sidebarContent"
+          class="sidebar-content tab-list-scroll"
+          @scroll.passive="loadMoreSessions"
+        >
+        <section v-if="pinnedSessions.length" class="sidebar-section pinned-section">
+          <button
+            class="sidebar-section-header pinned-header"
+            type="button"
+            @click="pinnedOpen = !pinnedOpen"
+          >
+            <span>置顶</span>
+            <ChevronDown
+              :size="16"
+              class="pinned-chevron"
+              :class="{ 'is-open': pinnedOpen }"
+            />
+          </button>
+          <template v-if="pinnedOpen">
+            <ChatSessionRow
+              v-for="session in pinnedSessions"
+              :key="session.session_id"
+              :title="sessionTitle(session)"
+              :subtitle="sessionSubtitle(session)"
+              :active="!isProviderWorkspace && currSessionId === session.session_id"
+              :running="isSessionRunning(session.session_id)"
+              :pinned="true"
+              @select="selectSession(session.session_id)"
+              @long-press="openSessionSheet(session)"
+            />
+          </template>
+        </section>
 
-      <div
-        v-if="!isSidebarCollapsed"
-        ref="sidebarContent"
-        class="sidebar-content"
-        @scroll.passive="loadMoreSessions"
-      >
         <ProjectList
           ref="sidebarProjects"
           :projects="projects"
@@ -125,52 +88,17 @@
           <div class="sidebar-section-header">
             <span>{{ tm("conversation.title") }}</span>
           </div>
-          <div
-            v-for="session in sidebarSessions"
+          <ChatSessionRow
+            v-for="session in unpinnedSessions"
             :key="session.session_id"
-            class="session-item"
-            :class="{
-              active:
-                !isProviderWorkspace && currSessionId === session.session_id,
-              running: isSessionRunning(session.session_id),
-            }"
-            role="button"
-            tabindex="0"
-            @click="selectSession(session.session_id)"
-            @keydown.enter="selectSession(session.session_id)"
-            @keydown.space.prevent="selectSession(session.session_id)"
-          >
-            <span class="session-title">{{ sessionTitle(session) }}</span>
-            <div class="session-actions" @click.stop>
-              <v-btn
-                icon
-                size="x-small"
-                variant="text"
-                class="session-action-btn"
-                :title="tm('conversation.editDisplayName')"
-                @click="editSidebarSessionTitle(session)"
-              >
-                <Pencil :size="15" />
-              </v-btn>
-              <v-btn
-                icon
-                size="x-small"
-                variant="text"
-                class="session-action-btn"
-                :title="tm('actions.deleteChat')"
-                @click="deleteSidebarSession(session)"
-              >
-                <Trash2 :size="15" />
-              </v-btn>
-            </div>
-            <v-progress-circular
-              v-if="isSessionRunning(session.session_id)"
-              class="session-progress"
-              indeterminate
-              size="16"
-              width="2"
-            />
-          </div>
+            :title="sessionTitle(session)"
+            :subtitle="sessionSubtitle(session)"
+            :active="!isProviderWorkspace && currSessionId === session.session_id"
+            :running="isSessionRunning(session.session_id)"
+            :pinned="false"
+            @select="selectSession(session.session_id)"
+            @long-press="openSessionSheet(session)"
+          />
           <v-progress-linear
             v-if="sessionsPagination.loading"
             color="primary"
@@ -185,48 +113,113 @@
             @retry="getSessions(sessionsPagination.append)"
           />
         </section>
+        </div>
+      </div>
+      <div
+        v-if="sheetSession"
+        class="sheet-backdrop"
+        @click="closeSessionSheet"
+      >
+        <div class="sheet" @click.stop>
+          <div class="sheet-title">{{ sessionTitle(sheetSession) }}</div>
+          <button class="sheet-item" type="button" @click="togglePin(sheetSession)">
+            {{ isPinned(sheetSession.session_id) ? "取消置顶" : "置顶" }}
+          </button>
+          <button class="sheet-item" type="button" @click="renameFromSheet">
+            重命名
+          </button>
+          <button
+            class="sheet-item sheet-item--danger"
+            type="button"
+            @click="deleteFromSheet"
+          >
+            删除
+          </button>
+        </div>
       </div>
 
-      <div class="sidebar-footer">
-        <v-btn
-          class="settings-btn"
-          :class="{ 'icon-only': isSidebarCollapsed }"
-          variant="text"
-          :icon="isSidebarCollapsed"
-          :aria-label="t('core.common.settings')"
-          @click="settingsOpen = true"
+      <div v-if="searchOpen" class="search-panel">
+        <div class="search-bar">
+          <div class="search-field">
+            <Search :size="18" class="search-field-icon" />
+            <input
+              v-model="searchQuery"
+              class="search-input"
+              type="search"
+              placeholder="搜索智能体会话"
+              @keydown.enter="commitSearch"
+            />
+          </div>
+          <button class="search-cancel" type="button" @click="closeSearch">
+            取消
+          </button>
+        </div>
+        <div v-if="searchHistory.length" class="search-history">
+          <div
+            v-for="(item, index) in searchHistory"
+            :key="item + index"
+            class="search-history-row"
+          >
+            <button
+              class="search-history-main"
+              type="button"
+              @click="applyHistory(item)"
+            >
+              <History :size="18" class="search-history-icon" />
+              <span class="search-history-text">{{ item }}</span>
+            </button>
+            <button
+              class="search-history-del"
+              type="button"
+              aria-label="删除该记录"
+              @click="removeHistory(index)"
+            >
+              <X :size="18" />
+            </button>
+          </div>
+          <button class="search-clear" type="button" @click="clearHistory">
+            清空全部搜索记录
+          </button>
+        </div>
+      </div>
+      <div v-if="isWide" class="wide-sidebar-footer">
+        <button
+          type="button"
+          class="wide-footer-btn"
+          :class="{ active: activeTab === 'extensions' }"
+          @click="selectTab('extensions')"
         >
-          <Settings
-            :size="20"
-            :class="['sidebar-action-icon', { 'mr-2': !isSidebarCollapsed }]"
-          />
-          <span v-if="!isSidebarCollapsed">{{
-            t("core.common.settings")
-          }}</span>
-        </v-btn>
+          <Puzzle :size="17" />
+          <span>扩展</span>
+        </button>
+        <button
+          type="button"
+          class="wide-footer-btn"
+          :class="{ active: activeTab === 'settings' }"
+          @click="selectTab('settings')"
+        >
+          <Settings :size="17" />
+          <span>设置</span>
+        </button>
       </div>
-    </v-navigation-drawer>
-
-    <ChatSettingsDialog
-      v-model="settingsOpen"
-      v-model:enable-streaming="enableStreaming"
-      v-model:enable-reasoning="enableReasoning"
-      v-model:send-shortcut="sendShortcut"
-      v-model:transport-mode="transportMode"
-    />
+    </section>
 
     <main
+      v-if="activeTab === 'chat' || (isWide && activeTab === 'list')"
       class="chat-main"
-      :class="{
+      :class="[tabAnimClass, {
         'empty-chat': isEmptyChat,
         'has-side-panel':
           threadPanelOpen ||
           reasoningPanelOpen ||
           refsSidebarOpen ||
           chatHeader.workspaceFilesOpen,
-      }"
+      }]"
       v-on="dragEvents"
     >
+      <header v-if="isWide" class="chat-desktop-topbar">
+        <ChatToolbarContext always-visible />
+      </header>
       <transition name="drop-fade">
         <div
           v-if="isDragging && !isProviderWorkspace"
@@ -270,7 +263,7 @@
             :current-session="currentSession"
             :reply-to="chatInputReplyTarget"
             :send-shortcut="sendShortcut"
-            :show-provider-selector="false"
+            :show-provider-selector="true"
             :failed-uploads="failedUploadViews"
             :active-uploads="activeUploadViews"
             :placeholder="tm('input.projectPlaceholder')"
@@ -339,7 +332,14 @@
           </div>
 
           <div
-            v-if="!loadingMessages && activeMessages.length"
+            v-if="!messagesViewReady && !loadingMessages && activeMessages.length"
+            class="center-state"
+          >
+            <v-progress-circular indeterminate size="28" width="3" />
+          </div>
+
+          <div
+            v-if="!loadingMessages && activeMessages.length && messagesViewReady"
             ref="messagesContent"
             class="messages-list-shell"
           >
@@ -379,28 +379,6 @@
         </section>
 
         <section ref="composerShell" class="composer-shell">
-          <button
-            v-if="isAwayFromBottom && !shouldStickToBottom"
-            class="scroll-to-bottom"
-            type="button"
-            :aria-label="tm('actions.scrollToBottom')"
-            :title="tm('actions.scrollToBottom')"
-            @click="scrollToBottom(true)"
-          >
-            <span
-              v-if="currSessionId && isSessionRunning(currSessionId)"
-              class="scroll-running-dots"
-              aria-hidden="true"
-            >
-              <span v-for="dot in 3" :key="dot" />
-            </span>
-            <ArrowDown
-              v-else
-              :size="20"
-              :stroke-width="1.75"
-              aria-hidden="true"
-            />
-          </button>
           <ChatInput
             ref="inputRef"
             v-model:prompt="draft"
@@ -417,7 +395,9 @@
             :current-session="currentSession"
             :reply-to="chatInputReplyTarget"
             :send-shortcut="sendShortcut"
-            :show-provider-selector="false"
+            :show-provider-selector="true"
+            :show-scroll-to-bottom="isAwayFromBottom && !shouldStickToBottom"
+            @scroll-to-bottom="scrollToBottom(true)"
             :failed-uploads="failedUploadViews"
             :active-uploads="activeUploadViews"
             :placeholder="
@@ -441,6 +421,159 @@
         </section>
       </div>
     </main>
+
+    <section
+      v-else-if="activeTab === 'extensions'"
+      class="chat-tab chat-tab--blank"
+      :class="tabAnimClass"
+    >
+      <p class="tab-blank-text">敬请期待</p>
+    </section>
+
+    <section v-else class="chat-tab chat-tab--settings" :class="tabAnimClass">
+      <!-- 二级页：模型配置 -->
+      <div v-if="settingsSub === 'providers'" class="settings-subpage-provider">
+        <button class="settings-back" type="button" @click="settingsSub = null">
+          <ArrowLeft :size="20" />
+          <span>模型配置</span>
+        </button>
+        <div class="settings-provider-body">
+          <ProviderChatCompletionPanel :show-border="false" />
+        </div>
+      </div>
+
+      <!-- 二级页：语言 -->
+      <div v-else-if="settingsSub === 'language'" class="settings-scroll">
+        <button class="settings-back" type="button" @click="settingsSub = null">
+          <ArrowLeft :size="20" />
+          <span>语言</span>
+        </button>
+        <div class="settings-card">
+          <button
+            v-for="lang in languageOptions"
+            :key="lang.value"
+            type="button"
+            class="settings-row"
+            @click="switchLanguage(lang.value)"
+          >
+            <span class="settings-name">{{ lang.flag }} {{ lang.label }}</span>
+            <Check
+              v-if="currentLanguage?.value === lang.value"
+              :size="19"
+              class="settings-check"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- 二级页：主题 -->
+      <div v-else-if="settingsSub === 'theme'" class="settings-scroll">
+        <button class="settings-back" type="button" @click="settingsSub = null">
+          <ArrowLeft :size="20" />
+          <span>主题</span>
+        </button>
+        <div class="settings-card">
+          <button
+            v-for="opt in themeChoices"
+            :key="opt.mode"
+            type="button"
+            class="settings-row"
+            @click="setThemeMode(opt.mode)"
+          >
+            <span class="settings-name">{{ opt.label }}</span>
+            <Check
+              v-if="customizer.themeMode === opt.mode"
+              :size="19"
+              class="settings-check"
+            />
+          </button>
+        </div>
+      </div>
+
+      <!-- 主页 -->
+      <div v-else class="settings-scroll">
+        <div class="settings-card">
+          <button class="settings-row" type="button" @click="openProviderSettings">
+            <Box :size="20" class="settings-icon" />
+            <span class="settings-name">模型配置</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+          <button class="settings-row" type="button" @click="settingsOpen = true">
+            <Settings :size="20" class="settings-icon" />
+            <span class="settings-name">聊天设置</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+          <button class="settings-row" type="button" @click="settingsSub = 'language'">
+            <Languages :size="20" class="settings-icon" />
+            <span class="settings-name">语言</span>
+            <span class="settings-value">{{ currentLanguage?.label }}</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+          <button class="settings-row" type="button" @click="settingsSub = 'theme'">
+            <SunMoon :size="20" class="settings-icon" />
+            <span class="settings-name">主题</span>
+            <span class="settings-value">{{ currentThemeLabel }}</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+        </div>
+
+        <div class="settings-card">
+          <button class="settings-row" type="button" @click="openUpdatePanel">
+            <RefreshCw :size="20" class="settings-icon" />
+            <span class="settings-name">更新 AstrBot</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+          <button class="settings-row" type="button" @click="openAccountPanel">
+            <User :size="20" class="settings-icon" />
+            <span class="settings-name">修改账户</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+        </div>
+
+        <div class="settings-card">
+          <button class="settings-row" type="button" @click="enterAdmin">
+            <LayoutGrid :size="20" class="settings-icon" />
+            <span class="settings-name">进入后台管理</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+        </div>
+
+        <div class="settings-card">
+          <button
+            class="settings-row settings-row--danger"
+            type="button"
+            @click="authStore.logout()"
+          >
+            <LogOut :size="20" class="settings-icon" />
+            <span class="settings-name">退出登录</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <ChatSettingsDialog
+      v-model="settingsOpen"
+      v-model:enable-streaming="enableStreaming"
+      v-model:enable-reasoning="enableReasoning"
+      v-model:send-shortcut="sendShortcut"
+      v-model:transport-mode="transportMode"
+    />
+
+    </div>
+
+    <nav v-if="!searchOpen" class="chat-tabbar" aria-label="主导航">
+      <button
+        v-for="tab in chatTabs"
+        :key="tab.key"
+        type="button"
+        class="chat-tabbar-btn"
+        :class="{ active: activeTab === tab.key }"
+        @click="onTabClick(tab.key)"
+      >
+        <component :is="tab.icon" :size="22" />
+        <span>{{ tab.label }}</span>
+      </button>
+    </nav>
 
     <div
       v-if="threadSelection.visible"
@@ -535,18 +668,34 @@ import {
   watch,
 } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { useDisplay } from "vuetify";
+import { useDisplay, useTheme } from "vuetify";
 import { isAxiosError } from "axios";
 import {
   ArrowDown,
+  ArrowLeft,
   Box,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  History,
+  Languages,
+  LayoutGrid,
+  List,
+  LogOut,
+  MessageCircle,
   PanelLeft,
   Pencil,
+  Puzzle,
+  RefreshCw,
+  Search,
   Settings,
   SquarePen,
+  SunMoon,
   Trash2,
+  User,
+  X,
 } from "@lucide/vue";
-import { chatApi, providerApi } from "@/api/v1";
+import { chatApi, conversationApi, providerApi } from "@/api/v1";
 import { webuiExtApi } from "@/api/webuiExt";
 import ChatSettingsDialog from "@/components/chat/ChatSettingsDialog.vue";
 import ChatToolbarContext from "@/components/chat/ChatToolbarContext.vue";
@@ -560,6 +709,7 @@ import ChatMessageList from "@/components/chat/ChatMessageList.vue";
 import ChatUILogo from "@/components/chat/ChatUILogo.vue";
 import type { RegenerateModelSelection } from "@/components/chat/RegenerateMenu.vue";
 import ChatLoadError from "@/components/chat/ChatLoadError.vue";
+import ChatSessionRow from "@/components/chat/ChatSessionRow.vue";
 import ReasoningSidebar from "@/components/chat/ReasoningSidebar.vue";
 import ThreadPanel from "@/components/chat/ThreadPanel.vue";
 import WorkspaceFilesPanel from "@/components/chat/WorkspaceFilesPanel.vue";
@@ -582,8 +732,14 @@ import { useChatHeaderStore } from "@/stores/chatHeader";
 import { useHeaderContextStore } from "@/stores/headerContext";
 import { useMobileDrawerStore } from "@/stores/mobileDrawer";
 import { useCustomizerStore } from "@/stores/customizer";
+import { useAuthStore } from "@/stores/auth";
+import { useUiPanelsStore } from "@/stores/uiPanels";
 import ProviderChatCompletionPanel from "@/components/provider/ProviderChatCompletionPanel.vue";
-import { useI18n, useModuleI18n } from "@/i18n/composables";
+import {
+  useI18n,
+  useLanguageSwitcher,
+  useModuleI18n,
+} from "@/i18n/composables";
 import { askForConfirmation, useConfirmDialog } from "@/utils/confirmDialog";
 import {
   contextLimit,
@@ -592,6 +748,7 @@ import {
   type ProviderMetadataSource,
 } from "@/utils/providerMetadata";
 import { useToast } from "@/utils/toast";
+import { useBackGuard } from "@/composables/useBackGuard";
 import { readChatDraft, writeChatDraft } from "@/utils/chatDraftStorage.mjs";
 
 const props = withDefaults(
@@ -608,14 +765,29 @@ const chatHeader = useChatHeaderStore();
 const headerContext = useHeaderContextStore();
 const mobileDrawer = useMobileDrawerStore();
 
+/* 宽屏（电脑版）：列表与会话合并为左右两栏 */
+const WIDE_QUERY = "(min-width: 961px)";
+const isWide = ref(
+  typeof window === "undefined"
+    ? false
+    : window.matchMedia(WIDE_QUERY).matches,
+);
+function syncIsWide(event: MediaQueryListEvent | MediaQueryList) {
+  isWide.value = event.matches;
+}
+
 /* Project the chat toolbar context (model selector + session title) into the
-   top toolbar only while the chat page is actually visible. */
+   top toolbar only while the chat page is actually visible.
+   宽屏下标题由聊天页自己画，不再塞进全局顶栏。 */
 watch(
-  () => props.active,
-  (active) =>
-    headerContext.SET_COMPONENT(active ? markRaw(ChatToolbarContext) : null),
+  [() => props.active, isWide],
+  ([active, wide]) =>
+    headerContext.SET_COMPONENT(
+      active && !wide ? markRaw(ChatToolbarContext) : null,
+    ),
   { immediate: true },
 );
+
 onUnmounted(() => headerContext.SET_COMPONENT(null));
 const customizer = useCustomizerStore();
 const { t } = useI18n();
@@ -676,6 +848,231 @@ interface TokenProviderConfig extends ProviderMetadataSource {
 }
 
 const activeWorkspace = ref<WorkspaceView>("chat");
+
+/* 底部标签页：列表 / 会话 / 扩展 / 设置 */
+type ChatTab = "list" | "chat" | "extensions" | "settings";
+const activeTab = ref<ChatTab>("chat");
+/* 宽屏下没有独立的“列表页”，进入 #/list 时直接落到 #/session */
+watch([isWide, activeTab], ([wide, tab]) => {
+  if (wide && tab === "list") selectTab("chat");
+});
+
+/* 宽屏下聊天页占满整个窗口，应用顶栏（原本只放标题和模式切换）整条隐去 */
+watch(
+  [isWide, () => props.active],
+  ([wide, active]) => {
+    document.documentElement.classList.toggle(
+      "astrbot-chat-wide",
+      Boolean(wide && active),
+    );
+  },
+  { immediate: true },
+);
+const chatTabs = [
+  { key: "list" as ChatTab, label: "列表", icon: markRaw(List) },
+  { key: "chat" as ChatTab, label: "会话", icon: markRaw(MessageCircle) },
+  { key: "extensions" as ChatTab, label: "扩展", icon: markRaw(Puzzle) },
+  { key: "settings" as ChatTab, label: "设置", icon: markRaw(Settings) },
+];
+const uiPanels = useUiPanelsStore();
+
+
+
+/* 每个标签页一个真实路径，刷新后停在同一页 */
+const TAB_PATHS: Record<ChatTab, string> = {
+  list: "/list",
+  chat: "/session",
+  extensions: "/extend",
+  settings: "/settings",
+};
+function tabFromPath(path: string): ChatTab | null {
+  if (path === "/list") return "list";
+  if (path.startsWith("/session")) return "chat";
+  if (path === "/extend") return "extensions";
+  if (path === "/settings") return "settings";
+  if (path.startsWith("/chat")) return "chat";
+  return null;
+}
+const slideDir = ref<"left" | "right" | "">("");
+const tabAnimClass = computed(() =>
+  slideDir.value === "left"
+    ? "tab-anim-left"
+    : slideDir.value === "right"
+      ? "tab-anim-right"
+      : "",
+);
+
+/* 点击标签栏按钮时给一次轻微振动；滑动切换不振动 */
+function onTabClick(tab: ChatTab) {
+  try {
+    navigator.vibrate?.(12);
+  } catch {
+    /* 部分浏览器不支持振动，忽略 */
+  }
+  selectTab(tab);
+}
+
+function selectTab(tab: ChatTab) {
+  const order: ChatTab[] = ["list", "chat", "extensions", "settings"];
+  const from = order.indexOf(activeTab.value);
+  const to = order.indexOf(tab);
+  slideDir.value = to > from ? "left" : to < from ? "right" : "";
+  activeTab.value = tab;
+  /* 离开会话页时收起侧栏，避免旧内容留在屏幕上 */
+  if (tab !== "chat") closeSecondaryPanels();
+  /* 回到「会话」页时保留当前打开的会话，否则会被当成新会话 */
+  const target =
+    tab === "chat" && currSessionId.value
+      ? `${TAB_PATHS.chat}/${currSessionId.value}`
+      : TAB_PATHS[tab];
+  if (!route.path.startsWith(TAB_PATHS[tab])) void router.push(target);
+}
+watch(
+  () => route.path,
+  (path) => {
+    const tab = tabFromPath(path);
+    if (tab) activeTab.value = tab;
+  },
+  { immediate: true },
+);
+
+/* ===== 搜索界面（本轮只做界面，搜索逻辑后续接） ===== */
+const SEARCH_HISTORY_KEY = "astrbot:chat-search-history:v1";
+const searchOpen = ref(false);
+const searchQuery = ref("");
+const searchHistory = ref<string[]>(readSearchHistory());
+
+function readSearchHistory(): string[] {
+  try {
+    const raw = localStorage.getItem(SEARCH_HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list)
+      ? list.filter((item) => typeof item === "string").slice(0, 10)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSearchHistory() {
+  try {
+    localStorage.setItem(
+      SEARCH_HISTORY_KEY,
+      JSON.stringify(searchHistory.value),
+    );
+  } catch {
+    /* 忽略存储失败 */
+  }
+}
+
+function openSearch() {
+  searchOpen.value = true;
+}
+
+function closeSearch() {
+  searchOpen.value = false;
+  searchQuery.value = "";
+}
+
+/* 搜索层拦截手机返回手势 */
+useBackGuard(searchOpen);
+
+function commitSearch() {
+  const keyword = searchQuery.value.trim();
+  if (!keyword) return;
+  searchHistory.value = [
+    keyword,
+    ...searchHistory.value.filter((item) => item !== keyword),
+  ].slice(0, 10);
+  persistSearchHistory();
+}
+
+function applyHistory(keyword: string) {
+  searchQuery.value = keyword;
+}
+
+function removeHistory(index: number) {
+  searchHistory.value = searchHistory.value.filter((_, i) => i !== index);
+  persistSearchHistory();
+}
+
+function clearHistory() {
+  searchHistory.value = [];
+  persistSearchHistory();
+}
+
+/* ===== 左右滑动切换标签页 ===== */
+const TAB_ORDER: ChatTab[] = ["list", "chat", "extensions", "settings"];
+let swipeStartX = 0;
+let swipeStartY = 0;
+let swipeTracking = false;
+
+function onTabSwipeStart(event: TouchEvent) {
+  if (searchOpen.value) {
+    swipeTracking = false;
+    return;
+  }
+  const touch = event.touches[0];
+  if (!touch) return;
+  swipeStartX = touch.clientX;
+  swipeStartY = touch.clientY;
+  swipeTracking = true;
+}
+
+function onTabSwipeEnd(event: TouchEvent) {
+  if (!swipeTracking) return;
+  swipeTracking = false;
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+  const dx = touch.clientX - swipeStartX;
+  const dy = touch.clientY - swipeStartY;
+  if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  const index = TAB_ORDER.indexOf(activeTab.value);
+  if (index < 0) return;
+  const next = dx < 0 ? index + 1 : index - 1;
+  if (next >= 0 && next < TAB_ORDER.length) selectTab(TAB_ORDER[next]);
+}
+/* 设置页的二级页面：null=主页，'language'/'theme'=子页 */
+const settingsSub = ref<null | "language" | "theme" | "providers">(null);
+/* 设置二级页同样拦截手机返回手势 */
+useBackGuard(
+  computed({
+    get: () => settingsSub.value !== null,
+    set: (open: boolean) => {
+      if (!open) settingsSub.value = null;
+    },
+  }),
+);
+watch(activeTab, (tab) => uiPanels.SET_ACTIVE_TAB(tab), { immediate: true });
+const authStore = useAuthStore();
+const theme = useTheme();
+const { languageOptions, currentLanguage, switchLanguage } =
+  useLanguageSwitcher();
+const themeChoices = [
+  { mode: "light" as const, label: "浅色" },
+  { mode: "dark" as const, label: "深色" },
+  { mode: "system" as const, label: "跟随系统" },
+];
+const currentThemeLabel = computed(
+  () => themeChoices.find((o) => o.mode === customizer.themeMode)?.label ?? "",
+);
+function setThemeMode(mode: "light" | "dark" | "system") {
+  customizer.SET_THEME_MODE(mode);
+  theme.global.name.value = customizer.uiTheme;
+}
+function openProviderSettings() {
+  settingsSub.value = "providers";
+}
+
+function openUpdatePanel() {
+  uiPanels.OPEN_UPDATE_DIALOG();
+}
+function openAccountPanel() {
+  uiPanels.OPEN_ACCOUNT_DIALOG();
+}
+function enterAdmin() {
+  router.push("/");
+}
 const projectDialogOpen = ref(false);
 const editingProject = ref<Project | null>(null);
 const projectDialogError = ref("");
@@ -741,6 +1138,8 @@ const threadSelection = reactive<{
   selectedText: "",
 });
 const settingsOpen = ref(false);
+/* 聊天设置弹窗拦截手机返回手势 */
+useBackGuard(settingsOpen);
 const enableStreaming = ref(true);
 const enableReasoning = ref(true);
 const sendShortcut = ref<"enter" | "shift_enter">("enter");
@@ -923,6 +1322,91 @@ const sidebarSessions = computed(() => {
   }
   return sessions.value;
 });
+
+/* ===== 置顶会话（本地保存，不依赖后端） ===== */
+const PINNED_KEY = "astrbot:chat-pinned-sessions:v1";
+const pinnedSessionIds = ref<string[]>(readPinnedSessions());
+const pinnedOpen = ref(true);
+const sheetSession = ref<Session | null>(null);
+
+function readPinnedSessions(): string[] {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list)
+      ? list.filter((item) => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistPinnedSessions() {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(pinnedSessionIds.value));
+  } catch {
+    /* 忽略存储失败 */
+  }
+}
+
+function isPinned(sessionId: string) {
+  return pinnedSessionIds.value.includes(sessionId);
+}
+
+function togglePin(session: Session) {
+  const id = session.session_id;
+  pinnedSessionIds.value = isPinned(id)
+    ? pinnedSessionIds.value.filter((item) => item !== id)
+    : [id, ...pinnedSessionIds.value];
+  persistPinnedSessions();
+  closeSessionSheet();
+}
+
+/* 统一按“最后更新时间”倒序：置顶区与普通区用同一规则 */
+function sessionSortTime(session: Session): number {
+  const ts = sessionActivity.value[session.session_id];
+  if (typeof ts === "number" && ts > 0) return ts * 1000;
+  const d = parseSessionDate(session.updated_at);
+  return d ? d.getTime() : 0;
+}
+
+const sortedSidebarSessions = computed(() =>
+  [...sidebarSessions.value].sort(
+    (a, b) => sessionSortTime(b) - sessionSortTime(a),
+  ),
+);
+
+const pinnedSessions = computed(() =>
+  sortedSidebarSessions.value.filter((session) => isPinned(session.session_id)),
+);
+const unpinnedSessions = computed(() =>
+  sortedSidebarSessions.value.filter(
+    (session) => !isPinned(session.session_id),
+  ),
+);
+
+function openSessionSheet(session: Session) {
+  /* 长按时浏览器可能残留文字选区（会露出一截选择手柄），这里主动清掉 */
+  window.getSelection()?.removeAllRanges();
+  document.getSelection()?.removeAllRanges();
+  sheetSession.value = session;
+}
+
+function closeSessionSheet() {
+  sheetSession.value = null;
+}
+
+function renameFromSheet() {
+  const session = sheetSession.value;
+  closeSessionSheet();
+  if (session) editSidebarSessionTitle(session);
+}
+
+async function deleteFromSheet() {
+  const session = sheetSession.value;
+  closeSessionSheet();
+  if (session) await deleteSidebarSession(session);
+}
 const currentSessionTitle = computed(() =>
   currentSession.value ? sessionTitle(currentSession.value) : "",
 );
@@ -1252,7 +1736,13 @@ watch(
       showChatWorkspace();
       selectedProjectId.value = null;
       await selectSession(routeSessionId, false);
-    } else if (!routeSessionId && currSessionId.value) {
+      return;
+    }
+    /* 只有真的回到“会话列表根路径”才算新会话；
+       切到 /list、/settings 等其它标签页时不能清空当前会话 */
+    const isSessionRoot =
+      route.path === basePath() || route.path === `${basePath()}/`;
+    if (!routeSessionId && currSessionId.value && isSessionRoot) {
       showChatWorkspace();
       currSessionId.value = "";
     }
@@ -1271,7 +1761,7 @@ function getRouteSessionId() {
 }
 
 function basePath() {
-  return props.chatboxMode ? "/chatbox" : "/chat";
+  return props.chatboxMode ? "/chatbox" : "/session";
 }
 
 function closeSecondaryPanels() {
@@ -1290,6 +1780,7 @@ function showChatWorkspace() {
 }
 
 async function openProviderWorkspace() {
+  activeTab.value = "chat";
   closeSecondaryPanels();
   activeWorkspace.value = "providers";
   const targetPath = `${basePath()}/models`;
@@ -1298,8 +1789,179 @@ async function openProviderWorkspace() {
   }
 }
 
+/*
+ * 会话列表里的 updated_at 只在会话记录被改动时更新，不代表“最后一次对话”。
+ * 真正的最后活跃时间来自按会话聚合的对话记录（conversations.updated_at，单位秒）。
+ */
+const sessionActivity = ref<Record<string, number>>({});
+const activityPagesLoaded = ref(0);
+
+function pickSessionActivity(item: any): { id: string; ts: number } | null {
+  const raw = item?.umo_info?.session_id || item?.user_id || "";
+  const id = String(raw).split("!").pop() || "";
+  const ts = Number(item?.updated_at);
+  if (!id || !Number.isFinite(ts) || ts <= 0) return null;
+  return { id, ts };
+}
+
+async function loadSessionActivity(targetCount?: number, refreshOnly = false) {
+  const wanted = Math.max(targetCount ?? sidebarSessions.value.length, 1);
+  const pagesNeeded = Math.min(6, Math.ceil(wanted / 100));
+  const start = refreshOnly ? 1 : activityPagesLoaded.value + 1;
+  for (let page = start; page <= pagesNeeded; page++) {
+    try {
+      const resp = await conversationApi.list({
+        page,
+        page_size: 100,
+        group_by_session: true,
+        sort_by: "updated_at",
+        sort_order: "desc",
+        include_history: false,
+      });
+      const rows = resp?.data?.data?.conversations ?? [];
+      const next = { ...sessionActivity.value };
+      for (const row of rows) {
+        const hit = pickSessionActivity(row);
+        if (hit) next[hit.id] = hit.ts;
+      }
+      sessionActivity.value = next;
+      activityPagesLoaded.value = Math.max(activityPagesLoaded.value, page);
+      if (rows.length < 100) break;
+    } catch {
+      break;
+    }
+    if (refreshOnly) break;
+  }
+}
+
+/* 会话条数变化时补齐时间；切回列表页时刷新第一页（最新 100 条） */
+watch(
+  () => sidebarSessions.value.length,
+  (len) => {
+    if (len > 0) void loadSessionActivity(len);
+  },
+);
+watch(activeTab, (tab) => {
+  if (tab === "list") void loadSessionActivity(undefined, true);
+});
+
+/* ===== 会话页：记忆滚动位置 + 先出框架后渲染消息 ===== */
+const messagesViewReady = ref(true);
+let savedChatScrollTop = 0;
+let savedChatStick = true;
+let pendingScrollRestore = false;
+
+function renderMessagesNextFrame() {
+  messagesViewReady.value = false;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      messagesViewReady.value = true;
+      if (pendingScrollRestore) {
+        pendingScrollRestore = false;
+        void nextTick(() => restoreChatScroll());
+      }
+    });
+  });
+}
+
+function applyScrollTarget(el: HTMLElement, target: number, tries = 0) {
+  el.scrollTop = target;
+  if (tries >= 4) return;
+  window.setTimeout(() => {
+    /* 用户已经自己滚动了就不再纠正 */
+    if (performance.now() - lastUserScrollAt < 500) return;
+    if (savedChatStick) return;
+    const cur = messagesContainer.value;
+    if (!cur) return;
+    if (Math.abs(cur.scrollTop - target) > 4) applyScrollTarget(cur, target, tries + 1);
+  }, 110);
+}
+
+function restoreChatScroll() {
+  const el = messagesContainer.value;
+  if (!el) return;
+  if (savedChatStick) {
+    el.scrollTop = el.scrollHeight;
+    shouldStickToBottom.value = true;
+    isAwayFromBottom.value = false;
+    return;
+  }
+  shouldStickToBottom.value = false;
+  isAwayFromBottom.value = true;
+  applyScrollTarget(el, savedChatScrollTop);
+  isAwayFromBottom.value =
+    el.scrollHeight - el.scrollTop - el.clientHeight > 8;
+}
+
+watch(activeTab, (tab, prev) => {
+  if (prev === "chat" && tab !== "chat") {
+    const el = messagesContainer.value;
+    if (el) {
+      savedChatScrollTop = el.scrollTop;
+      savedChatStick = shouldStickToBottom.value;
+    }
+    return;
+  }
+  if (tab === "chat" && prev !== "chat") {
+    pendingScrollRestore = true;
+    renderMessagesNextFrame();
+  }
+});
+const wideMq = window.matchMedia(WIDE_QUERY);
+onMounted(() => {
+  wideMq.addEventListener("change", syncIsWide);
+  syncIsWide(wideMq);
+});
+onUnmounted(() => {
+  wideMq.removeEventListener("change", syncIsWide);
+  document.documentElement.classList.remove("astrbot-chat-wide");
+});
+
+/* sidebarSessions 在下方才声明，挂载后再触发首次加载，避免初始化顺序问题 */
+onMounted(() => {
+  if (sidebarSessions.value.length > 0) void loadSessionActivity();
+});
+
 function sessionTitle(session: Session) {
   return session.display_name?.trim() || tm("conversation.newConversation");
+}
+
+function parseSessionDate(value: string): Date | null {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+/* 时间显示规则：
+   今天 -> 时:分；昨天 -> 昨天  时:分；
+   今年更早 -> X月X日  时:分；往年 -> X年X月X日  时:分（日期与时间之间两个空格） */
+function sessionUpdatedAt(session: Session): Date | null {
+  const ts = sessionActivity.value[session.session_id];
+  if (typeof ts === "number" && ts > 0) return new Date(ts * 1000);
+  return parseSessionDate(session.updated_at);
+}
+
+function sessionSubtitle(session: Session) {
+  const d = sessionUpdatedAt(session);
+  if (!d) return "";
+  const now = new Date();
+  const hm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const sep = "\u00A0\u00A0";
+  if (isSameDay(d, now)) return hm;
+  const yesterday = new Date(now.getTime() - 86400000);
+  if (isSameDay(d, yesterday)) return `昨天${sep}${hm}`;
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${d.getMonth() + 1}月${d.getDate()}日${sep}${hm}`;
+  }
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日${sep}${hm}`;
 }
 
 function syncSelectedTokenProvider() {
@@ -1338,10 +2000,11 @@ function formatUsagePercent(value: number) {
 
 async function startNewChat() {
   showChatWorkspace();
+  activeTab.value = "chat";
   selectedProjectId.value = null;
   replyTarget.value = null;
   newChat();
-  await focusChatInput();
+  await focusChatInputOnDesktop();
 }
 
 function openCreateProjectDialog() {
@@ -1363,7 +2026,7 @@ async function selectProject(projectId: string) {
   replyTarget.value = null;
   await router.push(basePath());
   await loadProjectSessions(projectId);
-  await focusChatInput();
+  await focusChatInputOnDesktop();
 }
 
 async function loadProjectSessions(projectId = selectedProjectId.value) {
@@ -1541,6 +2204,7 @@ watch(projectDialogOpen, (open) => {
 
 async function selectSession(sessionId: string, pushRoute = true) {
   showChatWorkspace();
+  activeTab.value = "chat";
   selectedProjectId.value = null;
   currSessionId.value = sessionId;
   replyTarget.value = null;
@@ -1556,8 +2220,8 @@ async function selectSession(sessionId: string, pushRoute = true) {
   if (storedSelection) {
     setProviderSelection(storedSelection.providerId, storedSelection.modelName);
   }
-  scrollToBottom(true);
-  await focusChatInput();
+  if (!pendingScrollRestore) scrollToBottom(true);
+  await focusChatInputOnDesktop();
 }
 
 async function sendCurrentMessage() {
@@ -2004,9 +2668,12 @@ async function stopRecording() {
   }
 }
 
+let lastUserScrollAt = 0;
+
 function handleMessagesInteraction(
   event: WheelEvent | TouchEvent | PointerEvent | KeyboardEvent,
 ) {
+  lastUserScrollAt = performance.now();
   if (event instanceof WheelEvent) {
     if (event.ctrlKey || event.deltaY === 0) return;
     autoScrollPaused.value = true;
@@ -2102,7 +2769,6 @@ function loadMoreSessions() {
   if (
     !container ||
     container.clientHeight === 0 ||
-    (isMobile.value && !mobileDrawer.open) ||
     !sessionsPagination.hasMore ||
     sessionsPagination.loading ||
     sessionsPagination.error
@@ -2150,6 +2816,12 @@ function scrollToBottom(resumeFollowing = false) {
     lastMessagesClientHeight = container.clientHeight;
     isAwayFromBottom.value = false;
   });
+}
+
+/* 移动端打开会话时不自动呼出键盘 */
+async function focusChatInputOnDesktop() {
+  if (isMobile.value) return;
+  await focusChatInput();
 }
 
 async function focusChatInput() {
@@ -2201,7 +2873,7 @@ async function stopCurrentSession() {
      window toolbar. Keep them flush with the content area's top edge. */
   --chat-panel-top-offset: 0px;
   --chat-session-active-bg: #efefef;
-  --chat-page-bg: #fdfcfc;
+  --chat-page-bg: #ffffff; /* 问答区背景 RGB 255,255,255 */
   --chat-border: #f2f2f2;
   --chat-muted: rgba(var(--v-theme-on-surface), 0.62);
   --chat-section-label: rgba(var(--v-theme-on-surface), 0.48);
@@ -2329,7 +3001,7 @@ async function stopCurrentSession() {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 10px 2px;
+  padding: 0 12px 2px; /* 气泡到屏幕 12px */
 }
 
 /* Force the brand onto its own compositing layer: on the macOS vibrancy window
@@ -2582,10 +3254,6 @@ async function stopCurrentSession() {
   text-align: left;
 }
 
-.session-item:hover {
-  background: var(--chat-session-active-bg);
-}
-
 /* Active session stays clearly highlighted (subtle in light mode otherwise). */
 .session-item.active {
   background: rgba(var(--v-theme-primary), 0.22);
@@ -2593,11 +3261,6 @@ async function stopCurrentSession() {
 
 .session-item.running {
   padding-right: 27px;
-}
-
-.session-item:hover,
-.session-item:focus-within {
-  padding-right: 56px;
 }
 
 .session-title {
@@ -2933,6 +3596,11 @@ async function stopCurrentSession() {
   pointer-events: auto;
 }
 
+/* 输入区在有消息时整体穿透点击，操作栏是新增的交互元素，需要单独恢复 */
+.conversation-stack:not(.is-empty) .composer-shell :deep(.composer-actions) {
+  pointer-events: auto;
+}
+
 .conversation-stack.is-empty .composer-shell {
   padding-bottom: 0;
 }
@@ -2951,6 +3619,98 @@ kbd {
 :deep(.list-node) {
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+:global(html.astrbot-chat-wide .v-app-bar.top-header) {
+  display: none !important;
+}
+
+:global(html.astrbot-chat-wide .v-main.chat-main) {
+  --v-layout-top: 0px;
+  padding-top: 0 !important;
+  top: 0 !important;
+}
+
+/* ===== 宽屏：左侧列表 + 右侧会话 双栏 ===== */
+@media (min-width: 961px) {
+  .chat-ui.is-wide {
+    flex-direction: row;
+  }
+
+  /* 让标签内容区的子元素直接参与外层横向布局 */
+  .chat-ui.is-wide .chat-tab-content {
+    display: contents;
+  }
+
+  .chat-ui.is-wide .chat-tab--list {
+    flex: 0 0 300px;
+    width: 300px;
+    height: 100%;
+    padding-top: 0;
+    border-right: 1px solid var(--chat-border);
+    background: var(--chat-page-bg);
+  }
+
+  .chat-ui.is-wide .chat-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding-top: 0;
+  }
+
+  .chat-ui.is-wide .chat-main.empty-chat {
+    padding-top: 0;
+  }
+
+  .chat-ui.is-wide .chat-tabbar {
+    display: none;
+  }
+
+  .chat-ui.is-wide .list-header {
+    padding: 12px 12px 8px;
+  }
+}
+
+.chat-desktop-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--chat-border);
+}
+
+.wide-sidebar-footer {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--chat-border);
+}
+
+.wide-footer-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: rgba(var(--v-theme-on-surface), 0.66);
+  cursor: pointer;
+}
+
+.wide-footer-btn:hover {
+  background: var(--chat-session-active-bg);
+}
+
+.wide-footer-btn.active {
+  color: rgb(1, 102, 255);
+  background: rgba(1, 102, 255, 0.08);
 }
 
 @media (min-width: 761px) {
@@ -2985,7 +3745,7 @@ kbd {
   }
 
   .messages-list-shell {
-    width: calc(100% - 20px);
+    width: calc(100% - 24px); /* 气泡到屏幕左右各 12px */
     max-width: 100%;
   }
 
@@ -2993,5 +3753,849 @@ kbd {
   .project-composer-shell {
     padding: 0;
   }
+}
+
+/* ===== 底部标签栏（列表 / 会话 / 扩展 / 设置） ===== */
+.chat-ui {
+  flex-direction: column;
+  /* 应用外壳（标签栏、列表、菜单、顶栏）一律不可选中；
+     只有消息正文和输入框保留选择能力，避免长按后残留文字选择手柄 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-ui :deep(.markdown-content),
+.chat-ui :deep(.reasoning-text),
+.chat-ui :deep(textarea),
+.chat-ui :deep(input),
+.chat-ui :deep(.search-input) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.chat-tab-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.chat-main {
+  height: auto;
+  min-height: 0;
+}
+
+/* 空会话时顶栏被收起，正文不需要再让出 50px */
+.chat-main.empty-chat {
+  padding-top: 8px;
+}
+
+.chat-tab {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 8px; /* 非会话标签页不显示标题，只需一点留白 */
+  box-sizing: border-box;
+  position: relative;
+}
+
+/* 列表页：原侧边栏内容，改为整屏宽度 */
+.tab-list-inner {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 6px 8px 0;
+}
+
+.tab-list-new {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.tab-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 设置页 */
+.chat-tab--settings {
+  overflow-y: auto;
+}
+
+.tab-settings-inner {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 24px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-row:hover,
+.settings-row:focus-visible {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.settings-row-icon {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.66);
+}
+
+.settings-row-label {
+  flex: 1;
+}
+
+.settings-row--danger {
+  color: rgb(var(--v-theme-error));
+}
+
+.settings-row--danger .settings-row-icon {
+  color: inherit;
+}
+
+.settings-group {
+  padding: 6px 12px 10px;
+}
+
+.settings-group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 16px;
+}
+
+.settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-left: 32px;
+}
+
+.settings-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.settings-chip.active {
+  border-color: rgb(1, 102, 255);
+  background: rgba(1, 102, 255, 0.06);
+  color: rgb(1, 102, 255);
+}
+
+.settings-chip-flag {
+  font-size: 15px;
+}
+
+/* 扩展页留白 */
+.chat-tab--blank {
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-blank-text {
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  font-size: 14px;
+}
+
+/* 标签栏本体 */
+.chat-tabbar {
+  flex: 0 0 auto;
+  display: flex;
+  border-top: 1px solid var(--chat-border);
+  background: var(--chat-page-bg, #fff);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.chat-tabbar-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 0 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+  cursor: pointer;
+}
+
+.chat-tabbar-btn.active {
+  color: rgb(1, 102, 255);
+}
+
+.chat-tabbar-btn svg {
+  stroke-width: 1.8;
+}
+
+@media (min-width: 600px) {
+  .chat-tabbar {
+    justify-content: center;
+  }
+
+  .chat-tabbar-btn {
+    flex: 0 0 120px;
+  }
+}
+
+/* 列表页右下角「创建会话」悬浮按钮 */
+.list-fab {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(1, 102, 255);
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(1, 102, 255, 0.22);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.list-fab:hover {
+  box-shadow: 0 8px 22px rgba(1, 102, 255, 0.4);
+}
+
+.list-fab:active {
+  transform: scale(0.94);
+}
+
+/* 设置二级页 */
+.settings-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 4px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-row--choice {
+  padding: 14px 12px;
+}
+
+.settings-choice-flag {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.settings-row-value {
+  font-size: 14px;
+  color: rgba(var(--v-theme-on-surface), 0.5);
+}
+
+.settings-chevron {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.32);
+}
+
+.settings-check {
+  flex: 0 0 auto;
+  color: rgb(1, 102, 255);
+}
+
+/* ===== 列表页：会话项（仿参考图：圆形图标 + 两行文字 + 右侧时间） ===== */
+/* 覆盖旧的侧边栏内边距，给列表更多宽度；移动端隐藏滚动条 */
+.tab-list-scroll {
+  padding: 0 4px 0;
+  scrollbar-width: none;
+}
+
+.tab-list-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.settings-scroll {
+  scrollbar-width: none;
+}
+
+.settings-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  margin: 0;
+  padding: 8px 8px;
+  border-radius: 14px;
+  background: transparent;
+}
+
+/* 只有真有鼠标的设备才用悬停高亮；手机上点击后残留的 hover 会变成一条灰条 */
+@media (hover: hover) and (pointer: fine) {
+  .session-item:hover,
+  .session-item:focus-visible {
+    background: rgba(var(--v-theme-on-surface), 0.05);
+  }
+}
+
+.session-item.active {
+  background: rgba(1, 102, 255, 0.08);
+}
+
+.session-avatar {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(1, 102, 255, 0.1);
+  color: rgb(1, 102, 255);
+}
+
+.session-item.active .session-avatar {
+  background: rgba(1, 102, 255, 0.16);
+}
+
+.session-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.session-item .session-title {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-sub {
+  font-size: 12.5px;
+  color: rgba(var(--v-theme-on-surface), 0.48);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-meta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.session-time {
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.38);
+  white-space: nowrap;
+}
+
+.session-item .session-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0;
+  padding-left: 8px;
+  background: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.session-item:hover .session-actions,
+.session-item:focus-within .session-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ===== 设置页：分组卡片（仿参考图） ===== */
+.chat-tab--settings {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+}
+
+.settings-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 0 32px;
+}
+
+.settings-card {
+  margin: 0 16px 20px;
+  border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+  overflow: hidden;
+}
+
+.settings-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 54px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 16.5px;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-row + .settings-row::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+}
+
+.settings-row:active {
+  background: rgba(var(--v-theme-on-surface), 0.05);
+}
+
+.settings-icon {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.9);
+  stroke-width: 2.1;
+}
+
+.settings-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-value {
+  font-size: 15px;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+}
+
+.settings-chevron {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.26);
+}
+
+.settings-check {
+  flex: 0 0 auto;
+  color: rgb(1, 102, 255);
+}
+
+.settings-row--danger {
+  color: rgb(var(--v-theme-error));
+}
+
+.settings-row--danger .settings-icon {
+  color: inherit;
+}
+
+.settings-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 16px 12px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+  cursor: pointer;
+}
+
+/* ===== 列表页顶部：搜索栏 + 创建会话 ===== */
+.list-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 8px;
+}
+
+.list-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+  font: inherit;
+  cursor: pointer;
+}
+
+.list-search-icon {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+}
+
+.list-search-text {
+  font-size: 16px;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+}
+
+.list-create {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: rgb(var(--v-theme-on-surface));
+  cursor: pointer;
+}
+
+.list-create:active {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+/* ===== 搜索界面 ===== */
+.search-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  background: rgb(var(--v-theme-surface));
+}
+
+.search-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 10px;
+}
+
+.search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.search-field-icon {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+}
+
+.search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.search-input::placeholder {
+  color: rgba(var(--v-theme-on-surface), 0.38);
+}
+
+.search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-cancel {
+  flex: 0 0 auto;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 16px;
+  color: rgb(var(--v-theme-on-surface));
+  cursor: pointer;
+}
+
+.search-history {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 24px;
+  scrollbar-width: none;
+}
+
+.search-history::-webkit-scrollbar {
+  width: 0;
+}
+
+.search-history-row {
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+}
+
+.search-history-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 56px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 17px;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-history-icon {
+  flex: 0 0 auto;
+  color: rgba(var(--v-theme-on-surface), 0.38);
+}
+
+.search-history-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.search-history-del {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: rgba(var(--v-theme-on-surface), 0.32);
+  cursor: pointer;
+}
+
+.search-clear {
+  display: block;
+  margin: 14px auto 8px;
+  padding: 8px 16px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 15px;
+  color: rgba(var(--v-theme-on-surface), 0.42);
+  cursor: pointer;
+}
+
+/* ===== 标签页切换动效（MD 共享轴：淡入 + 轻微横移） ===== */
+@keyframes tabAnimFromRight {
+  from {
+    opacity: 0.2;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes tabAnimFromLeft {
+  from {
+    opacity: 0.2;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.tab-anim-left {
+  animation: tabAnimFromRight 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.tab-anim-right {
+  animation: tabAnimFromLeft 0.26s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ===== 置顶分组 ===== */
+.pinned-header {
+  gap: 3px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pinned-section {
+  padding-bottom: 4px;
+}
+
+.pinned-chevron {
+  color: rgba(var(--v-theme-on-surface), 0.4);
+  transition: transform 0.2s ease;
+}
+
+.pinned-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+/* ===== 长按操作菜单 ===== */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.32);
+  animation: sheetFade 0.16s ease-out;
+}
+
+@keyframes sheetFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sheet {
+  width: 100%;
+  padding: 8px 8px calc(12px + env(safe-area-inset-bottom));
+  border-radius: 18px 18px 0 0;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.12);
+  animation: sheetUp 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes sheetUp {
+  from {
+    transform: translateY(24px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.sheet {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.sheet-title {
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 10px 16px 8px;
+  font-size: 13px;
+  color: rgba(var(--v-theme-on-surface), 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sheet-item {
+  display: block;
+  width: 100%;
+  padding: 15px 16px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  font: inherit;
+  font-size: 16.5px;
+  color: rgb(var(--v-theme-on-surface));
+  text-align: left;
+  cursor: pointer;
+}
+
+.sheet-item:active {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+
+.sheet-item--danger {
+  color: rgb(var(--v-theme-error));
+}
+
+/* ===== 设置页内的模型配置子页 ===== */
+.settings-subpage-provider {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 0 0;
+  background: rgb(var(--v-theme-surface));
+}
+
+.settings-provider-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 4px 8px;
 }
 </style>

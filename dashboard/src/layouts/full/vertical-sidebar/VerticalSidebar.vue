@@ -303,7 +303,7 @@ function toggleSidebar() {
       </v-list>
       <div class="sidebar-footer">
         <v-btn class="sidebar-footer-btn" :class="{ 'sidebar-footer-icon-btn': isRailSidebar }"
-          variant="text" :icon="isRailSidebar" to="/settings" :aria-label="t('core.navigation.settings')">
+          variant="text" :icon="isRailSidebar" to="/settings-admin" :aria-label="t('core.navigation.settings')">
           <Settings :size="20" class="sidebar-footer-lucide-icon" />
           <span v-if="!isRailSidebar">{{ t('core.navigation.settings') }}</span>
           <v-tooltip

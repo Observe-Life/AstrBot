@@ -1,6 +1,14 @@
 .chat-markdown.markstream-vue {
   --ms-text-body: 1rem;
-  --ms-leading-body: 1.7;
+  --ms-leading-body: 1.46; /* 行间空白 ≈12px */
+  /* 章节标题与表格：与正文段落同一档间距（视觉 24px） */
+  --ms-flow-heading-1-mt: 12px; --ms-flow-heading-1-mb: 12px;
+  --ms-flow-heading-2-mt: 12px; --ms-flow-heading-2-mb: 12px;
+  --ms-flow-heading-3-mt: 12px; --ms-flow-heading-3-mb: 12px;
+  --ms-flow-heading-4-mt: 12px; --ms-flow-heading-4-mb: 12px;
+  --ms-flow-heading-5-mt: 12px; --ms-flow-heading-5-mb: 12px;
+  --ms-flow-heading-6-mt: 12px; --ms-flow-heading-6-mb: 12px;
+  --ms-flow-table-y: 12px;
 }
 
 @media (min-width: 761px) {
@@ -53,4 +61,21 @@
   border: 0;
   border-top: 1px solid rgba(var(--v-theme-on-surface), 0.1);
   opacity: 1;
+}
+
+/* 段落间距：markstream 默认 .5rem(8px) 比行间空白(约11px)还小，段落会糊成一片。
+   取 1rem(16px)，满足"段间距 ≥ 行高的 1.2 倍"。 */
+.chat-markdown .paragraph-node {
+  margin: 12px 0; /* 段间视觉空白 ≈24px */
+}
+
+/* 章节标题：间距强制与正文段间距一致（第三方样式表的变量优先级更高，这里直接落到元素上） */
+.chat-markdown .heading-node {
+  margin-top: 12px !important;
+  margin-bottom: 12px !important;
+}
+
+/* 有序/无序列表的编号与符号颜色（按要求 RGB 255,255,255） */
+.chat-markdown .list-item::marker {
+  color: rgb(1, 1, 1) !important;
 }

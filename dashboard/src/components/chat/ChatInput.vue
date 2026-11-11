@@ -1,6 +1,57 @@
 <template>
   <div class="input-area fade-in" :class="{ 'is-dark': isDark }">
     <div
+      class="composer-actions"
+      @touchstart.stop
+      @touchmove.stop
+      @touchend.stop
+    >
+      <button class="composer-chip" type="button" @click="triggerImageInput">
+        <ImageIcon :size="16" />
+        <span>图片</span>
+      </button>
+      <button class="composer-chip" type="button" @click="triggerFileInput">
+        <Paperclip :size="16" />
+        <span>文件</span>
+      </button>
+      <button
+        v-if="showScrollToBottom"
+        class="composer-chip"
+        type="button"
+        @click="emit('scrollToBottom')"
+      >
+        <ArrowDown :size="16" />
+        <span>置底</span>
+      </button>
+      <button class="composer-chip" type="button">
+        <Sparkles :size="16" />
+        <span>能力</span>
+      </button>
+      <button class="composer-chip" type="button" @click="openConfigDialog">
+        <SlidersHorizontal :size="16" />
+        <span>配置</span>
+      </button>
+    </div>
+
+    <input
+      type="file"
+      ref="fileInputRef"
+      @change="handleFileSelect"
+      style="display: none"
+      multiple
+    />
+    <div class="hidden-config-selector">
+      <ConfigSelector
+        ref="configSelectorRef"
+        :session-id="sessionId || null"
+        :platform-id="sessionPlatformId"
+        :is-group="sessionIsGroup"
+        :initial-config-id="props.configId"
+        @config-changed="handleConfigChange"
+      />
+    </div>
+
+    <div
       class="input-container"
       :class="{
         'has-attachments': hasStagedAttachments,
@@ -176,7 +227,7 @@
             @blur="handleBlur"
             @paste="handlePaste"
             :disabled="disabled"
-            :placeholder="props.placeholder || tm('input.placeholder')"
+            placeholder=""
             class="chat-textarea"
             autocomplete="off"
             autocorrect="off"
@@ -184,67 +235,11 @@
             spellcheck="false"
           ></textarea>
         </div>
-        <div class="input-left-actions">
-          <!-- Settings Menu -->
-          <StyledMenu
-            offset="8"
-            location="top start"
-            :close-on-content-click="false"
-          >
-            <template v-slot:activator="{ props: activatorProps }">
-              <v-btn
-                v-bind="activatorProps"
-                icon
-                variant="text"
-                class="input-neutral-btn input-outline-control"
-                :aria-label="tm('input.upload')"
-              >
-                <Plus :size="18" :stroke-width="1.75" />
-              </v-btn>
-            </template>
-
-            <!-- Upload Files -->
-            <v-list-item
-              class="styled-menu-item"
-              rounded="md"
-              @click="triggerImageInput"
-            >
-              <template v-slot:prepend>
-                <v-icon icon="mdi-file-upload" size="small"></v-icon>
-              </template>
-              <v-list-item-title>
-                {{ tm("input.upload") }}
-              </v-list-item-title>
-            </v-list-item>
-
-            <!-- Config Selector in Menu -->
-            <ConfigSelector
-              :session-id="sessionId || null"
-              :platform-id="sessionPlatformId"
-              :is-group="sessionIsGroup"
-              :initial-config-id="props.configId"
-              @config-changed="handleConfigChange"
-            />
-
-            <v-list-item
-              v-if="showSettings"
-              class="styled-menu-item"
-              rounded="md"
-              @click="$emit('openSettings')"
-            >
-              <template #prepend>
-                <v-icon icon="mdi-cog-outline" size="small" />
-              </template>
-              <v-list-item-title>{{
-                t("core.common.settings")
-              }}</v-list-item-title>
-            </v-list-item>
-          </StyledMenu>
-        </div>
         <div class="input-right-actions">
           <input
             type="file"
             ref="imageInputRef"
+            accept="image/*"
             @change="handleFileSelect"
             style="display: none"
             multiple
@@ -401,7 +396,18 @@ import {
   onBeforeUnmount,
 } from "vue";
 import { useDisplay } from "vuetify";
-import { ArrowUp, CircleStop, Mic, Plus, Square } from "@lucide/vue";
+import {
+  ArrowDown,
+  ArrowUp,
+  CircleStop,
+  Image as ImageIcon,
+  Mic,
+  Paperclip,
+  Plus,
+  SlidersHorizontal,
+  Sparkles,
+  Square,
+} from "@lucide/vue";
 import { useI18n, useModuleI18n } from "@/i18n/composables";
 import { useCustomizerStore } from "@/stores/customizer";
 import { isComposingEnter } from "@/utils/imeInput.mjs";
@@ -455,6 +461,7 @@ interface Props {
   showProviderSelector?: boolean;
   tokenUsage?: TokenUsageInfo | null;
   placeholder?: string;
+  showScrollToBottom?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -469,6 +476,7 @@ const props = withDefaults(defineProps<Props>(), {
   showProviderSelector: true,
   showSettings: false,
   tokenUsage: null,
+  showScrollToBottom: false,
 });
 
 const emit = defineEmits<{
@@ -477,6 +485,7 @@ const emit = defineEmits<{
   stop: [];
   compressContext: [];
   openSettings: [];
+  scrollToBottom: [];
   removeImage: [index: number];
   removeAudio: [];
   removeFile: [index: number];
@@ -499,6 +508,8 @@ const isDark = computed(
 
 const inputField = ref<HTMLTextAreaElement | null>(null);
 const imageInputRef = ref<HTMLInputElement | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const configSelectorRef = ref<InstanceType<typeof ConfigSelector> | null>(null);
 const providerModelMenuRef = ref<InstanceType<typeof ProviderModelMenu> | null>(
   null,
 );
@@ -763,7 +774,12 @@ function autoResize() {
     window.matchMedia("(max-width: 768px)").matches;
   const viewportHeight =
     typeof window !== "undefined" ? window.innerHeight : 900;
-  const minHeight = 48;
+  // 空输入时只占一行：行高 + 上下内边距（不再用 48px 的固定值，那约等于两行）
+  const cs = getComputedStyle(el);
+  const lineHeight = parseFloat(cs.lineHeight) || 22;
+  const padY =
+    (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const minHeight = Math.round(lineHeight + padY);
   const maxHeight = isMobileViewport
     ? Math.min(220, Math.round(viewportHeight * 0.42))
     : Math.min(420, Math.round(viewportHeight * 0.48));
@@ -973,6 +989,14 @@ function handlePaste(e: ClipboardEvent) {
   emit("pasteImage", e);
 }
 
+function triggerFileInput() {
+  fileInputRef.value?.click();
+}
+
+function openConfigDialog() {
+  configSelectorRef.value?.openDialog?.();
+}
+
 function triggerImageInput() {
   imageInputRef.value?.click();
 }
@@ -1157,7 +1181,8 @@ defineExpose({
   border: 0 !important;
   border-color: transparent !important;
   background: transparent !important;
-  box-shadow: none !important;
+  /* 加号外面的圆环（内阴影，不受按钮 border 重置影响） */
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-on-surface), 0.38) !important;
 }
 
 .input-outline-control:hover,
@@ -1194,10 +1219,11 @@ defineExpose({
   display: flex;
   flex-direction: column;
   padding: 8px 14px !important;
-  border: 1px solid #d9d9d9;
-  border-radius: 20px !important;
+  border: 1px solid rgba(0, 0, 0, 0.055);
+  border-radius: 22px !important;
   background: #fff !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
+  /* 参考图的量级：只往下铺 4px，收在输入框与标签栏的 8px 空隙里 */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
 }
 
 .input-area.is-dark .input-container {
@@ -1218,7 +1244,7 @@ defineExpose({
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
     "field field field"
-    "left . right";
+    "right right right";
   align-items: center;
   gap: 4px 8px;
 }
@@ -1233,7 +1259,7 @@ defineExpose({
   width: 100%;
   box-sizing: border-box;
   min-width: 0;
-  min-height: 48px;
+  min-height: 30px; /* 一行：行高 22px + 上下内边距 8px */
   max-height: min(48vh, 420px);
   margin: 0;
   padding: 4px 2px;
@@ -1261,7 +1287,7 @@ defineExpose({
 
 .input-left-actions {
   grid-area: left;
-  margin-inline-start: -8px;
+  margin-inline-start: 0; /* 与右侧图标距边一致（容器 padding 14px） */
   display: flex;
   align-items: center;
   flex: 0 0 auto !important;
@@ -1277,9 +1303,53 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-shrink: 0;
-  gap: 8px;
+  flex-shrink: 1;
+  min-width: 0;
+  margin-left: -4px;
+  gap: 6px;
   margin-top: 0 !important;
+}
+
+/* 模型选择器占满可用宽度：名字先铺到左侧“+”按钮，放不下才省略 */
+.input-right-actions :deep(.provider-select-menu) {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+.input-right-actions :deep(.provider-trigger) {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+/* 展开箭头挪到模型名左边，并收紧两侧间距 */
+.input-right-actions :deep(.provider-trigger-chevron) {
+  order: -1;
+  margin-right: 0;
+}
+
+.input-right-actions :deep(.provider-trigger) {
+  gap: 4px;
+}
+
+.input-right-actions :deep(.provider-trigger-copy) {
+  gap: 6px;
+}
+
+.input-right-actions :deep(.provider-trigger-copy) {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.input-right-actions :deep(.provider-trigger-title) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .input-right-actions :deep(.provider-chip) {
@@ -1587,9 +1657,9 @@ defineExpose({
   }
 
   .input-container {
-    width: calc(100% - 20px) !important;
+    width: calc(100% - 24px) !important; /* 与回答气泡一致：左右各 12px */
     max-width: 100% !important;
-    margin: 0 10px calc(8px + env(safe-area-inset-bottom)) !important;
+    margin: 0 12px calc(8px + env(safe-area-inset-bottom)) !important;
     padding: 8px 10px !important;
   }
 
@@ -1641,5 +1711,58 @@ defineExpose({
     width: 54px;
     flex-basis: 54px;
   }
+}
+
+/* ===== 聊天框上方操作栏（可横向滑动） ===== */
+.composer-actions {
+  width: var(--chat-content-width, 76%);
+  max-width: var(--chat-content-max-width, 760px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 8px;
+  background: rgb(var(--v-theme-surface));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.composer-actions::-webkit-scrollbar {
+  display: none;
+}
+
+/* 与 .input-container 的移动端宽度规则保持一致，保证第一个按钮左缘对齐输入框 */
+@media (max-width: 768px) {
+  .composer-actions {
+    width: calc(100% - 24px);
+    max-width: 100%;
+  }
+}
+
+.composer-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.14);
+  border-radius: 10px;
+  background: rgb(var(--v-theme-surface));
+  font: inherit;
+  font-size: 14px;
+  color: rgb(var(--v-theme-on-surface));
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.composer-chip:active {
+  background: rgba(var(--v-theme-on-surface), 0.05);
+}
+
+.hidden-config-selector {
+  display: none;
 }
 </style>
