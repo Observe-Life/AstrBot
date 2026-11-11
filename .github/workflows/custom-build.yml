@@ -163,6 +163,15 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --title "自定义构建（滚动）" --target "$GITHUB_REF_NAME" --notes "$NOTES"
           gh release edit "$TAG" --notes "$NOTES"
+
+          # 清掉历史遗留资产，Release 上只允许存在本次这两个文件，
+          # 否则以后还是可能下到已经废弃的旧包
+          gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
+            case "$asset" in
+              astrbot-custom.tar.gz|deps-fingerprint.txt) ;;
+              *) echo "删除遗留资产：$asset"; gh release delete-asset "$TAG" "$asset" -y ;;
+            esac
+          done
           gh release upload "$TAG" \
             artifacts/astrbot-custom.tar.gz \
             deps-fingerprint.txt \
