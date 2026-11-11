@@ -970,11 +970,22 @@ serverUrl.value = getServerUrl();
  * 布局视口自动收缩（此时插入量为 0），两者互补不叠加。 */
 if (window.visualViewport) {
   const vv = window.visualViewport;
+  /* 视口基线：记录出现过的最大可视高度，用于识别"窗口被键盘压缩"的设备行为
+   * （Capacitor 8.3+ 强制压缩视口，innerHeight 与 vv.height 同步变小，
+   *   此时 kb-inset 恒为 0，只能靠基线对比判断键盘是否弹出） */
+  let viewportBaseline = vv.height;
   const applyKeyboardInset = () => {
+    if (vv.height > viewportBaseline) viewportBaseline = vv.height;
     const kb = Math.max(
       0,
       Math.round(window.innerHeight - vv.height - vv.offsetTop),
     );
+    /* 键盘开启判定：overlay 模式下 inset>0；压缩模式下视口明显矮于基线（竖屏） */
+    const keyboardOpen =
+      kb > 0 ||
+      (window.innerHeight > window.innerWidth &&
+        vv.height < viewportBaseline - 120);
+    document.documentElement.classList.toggle("kb-open", keyboardOpen);
     document.documentElement.style.setProperty(
       "--chat-kb-inset",
       `${kb}px`,
@@ -3032,6 +3043,13 @@ async function stopCurrentSession() {
 .chat-tabbar {
   position: relative;
   z-index: 81;
+}
+
+/* 键盘弹出时隐藏底部标签栏：视觉上等同"标签栏被键盘遮住"。
+ * 背景：Capacitor 8.3+ 强制压缩 WebView 视口（官方 #8619 尚未合并），
+ * 原生 adjustNothing 无法生效，只能在前端做视觉等价。 */
+html.kb-open .chat-tabbar {
+  display: none !important;
 }
 
 .server-offline-mask {
