@@ -981,10 +981,9 @@ if (window.visualViewport) {
       Math.round(window.innerHeight - vv.height - vv.offsetTop),
     );
     /* 键盘开启判定：overlay 模式下 inset>0；压缩模式下视口明显矮于基线（竖屏） */
-    const keyboardOpen =
-      kb > 0 ||
-      (window.innerHeight > window.innerWidth &&
-        vv.height < viewportBaseline - 120);
+    /* 竖屏判定必须用物理屏幕方向：键盘压缩后 innerHeight 已小于 innerWidth */
+    const isPortrait = window.screen.height > window.screen.width;
+    const keyboardOpen = kb > 0 || (isPortrait && vv.height < viewportBaseline - 120);
     document.documentElement.classList.toggle("kb-open", keyboardOpen);
     document.documentElement.style.setProperty(
       "--chat-kb-inset",
