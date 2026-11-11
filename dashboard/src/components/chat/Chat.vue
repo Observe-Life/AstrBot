@@ -36,6 +36,7 @@
         <div
           ref="sidebarContent"
           class="sidebar-content tab-list-scroll"
+          v-pull-refresh="reloadPage"
           @scroll.passive="loadMoreSessions"
         >
         <section v-if="pinnedSessions.length" class="sidebar-section pinned-section">
@@ -426,6 +427,7 @@
       v-if="activeTab === 'extensions'"
       class="chat-tab chat-tab--blank"
       :class="tabAnimClass"
+      v-pull-refresh="reloadPage"
     >
       <p class="tab-blank-text">敬请期待</p>
     </section>
@@ -447,7 +449,7 @@
       </div>
 
       <!-- 二级页：语言 -->
-      <div v-else-if="settingsSub === 'language'" class="settings-scroll">
+      <div v-else-if="settingsSub === 'language'" class="settings-scroll" v-pull-refresh="reloadPage">
         <button class="settings-back" type="button" @click="settingsSub = null">
           <ArrowLeft :size="20" />
           <span>语言</span>
@@ -471,7 +473,7 @@
       </div>
 
       <!-- 二级页：主题 -->
-      <div v-else-if="settingsSub === 'theme'" class="settings-scroll">
+      <div v-else-if="settingsSub === 'theme'" class="settings-scroll" v-pull-refresh="reloadPage">
         <button class="settings-back" type="button" @click="settingsSub = null">
           <ArrowLeft :size="20" />
           <span>主题</span>
@@ -495,7 +497,7 @@
       </div>
 
       <!-- 主页 -->
-      <div v-else class="settings-scroll">
+      <div v-else class="settings-scroll" v-pull-refresh="reloadPage">
         <div class="settings-card">
           <button class="settings-row" type="button" @click="openProviderSettings">
             <Box :size="20" class="settings-icon" />
@@ -803,6 +805,7 @@ import {
   setServerUrl,
 } from "@/composables/useServerAddress";
 import { useThinScrollbar } from "@/composables/useThinScrollbar";
+import { pullRefresh as vPullRefresh } from "@/directives/pullRefresh";
 import { useSessions, type Session } from "@/composables/useSessions";
 import {
   messageBlocks as buildMessageBlocks,
@@ -1527,6 +1530,11 @@ const unpinnedSessions = computed(() =>
     (session) => !isPinned(session.session_id),
   ),
 );
+
+/** 下拉刷新：整页重载（WebSocket 掉线后页面数据不更新的兜底手段） */
+function reloadPage() {
+  window.location.reload();
+}
 
 function openSessionSheet(session: Session) {
   /* 长按时浏览器可能残留文字选区（会露出一截选择手柄），这里主动清掉 */
@@ -3012,7 +3020,13 @@ async function stopCurrentSession() {
 
 <style scoped>
 /* ── 连接服务器与键盘避让 ── */
+/* 键盘插入量只作用于内容区（含输入框）；
+   底部标签栏保持原位，由键盘直接盖住 */
 .chat-ui {
+  /* 不在这里加 padding：否则标签栏也会被顶起 */
+}
+
+.chat-tab-content {
   padding-bottom: var(--chat-kb-inset, 0px);
 }
 
@@ -4818,7 +4832,8 @@ kbd {
 .sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  /* 必须高于底部标签栏(81)，否则长按菜单最后一项被标签栏盖住 */
+  z-index: 90;
   display: flex;
   align-items: flex-end;
   background: rgba(0, 0, 0, 0.32);
