@@ -3,9 +3,11 @@ name: Android App (Capacitor 打包)
 # 独立流水线：只为安卓 APK 服务，不影响主构建。
 # 产物发布到滚动 Release customize-build（astrbot-webui-debug.apk）。
 # 说明：
-# - 安卓壳工程不进仓库，构建时用 npx cap add android 动态生成；
-# - 首次运行时依赖自举：把 Capacitor 写进 dashboard/package.json 与
-#   pnpm-lock.yaml 并自动提交，之后 frozen-lockfile 与主构建一致。
+# - 安卓壳工程源码在 dashboard/android/（进仓库）：
+#   改 APP 名字、图标、原生功能，直接改壳工程源码文件，推送后出新包；
+# - 首次运行自举两件事（都是自动提交，仅发生一次）：
+#   a) Capacitor 依赖写进 dashboard/package.json 与 pnpm-lock.yaml；
+#   b) 壳工程不存在时用 npx cap add android 生成并提交 dashboard/android/。
 
 on:
   workflow_dispatch:
@@ -71,14 +73,27 @@ jobs:
         working-directory: dashboard
         run: pnpm run build
 
-      - name: 生成安卓壳工程（动态生成，不进仓库）
+      - name: 壳工程（存在即用仓库源码；首次生成并提交入库）
         working-directory: dashboard
         run: |
-          npx --yes cap add android
+          BOOTSTRAPPED=0
+          if [ ! -d android ]; then
+            npx --yes cap add android
+            BOOTSTRAPPED=1
+          fi
           # 内网地址是 http 明文（REST 与 ws），必须允许明文流量
-          sed -i 's|<application|<application android:usesCleartextTraffic="true"|' \
-            android/app/src/main/AndroidManifest.xml
+          grep -q usesCleartextTraffic android/app/src/main/AndroidManifest.xml || \
+            sed -i 's|<application|<application android:usesCleartextTraffic="true"|' \
+              android/app/src/main/AndroidManifest.xml
           grep -q usesCleartextTraffic android/app/src/main/AndroidManifest.xml
+          if [ "$BOOTSTRAPPED" = "1" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add android
+            git commit -m "build(android): 壳工程入库（Capacitor 自动生成，后续改名/图标/功能直接改这里）"
+            git push
+            echo "壳工程已提交入库"
+          fi
 
       - name: 同步前端产物
         working-directory: dashboard
