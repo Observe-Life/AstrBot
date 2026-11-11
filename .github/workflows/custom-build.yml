@@ -10,12 +10,6 @@ name: Custom Build (云构建 · 产物与发布)
 #                           变了 → 走 Custom Image Build 整镜像兜底。
 
 on:
-  push:
-    branches:
-      - "4.29.0-customize"
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
   workflow_dispatch:
     inputs:
       publish_release:
