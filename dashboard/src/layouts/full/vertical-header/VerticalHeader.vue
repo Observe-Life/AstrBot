@@ -16,7 +16,7 @@ import "katex/dist/katex.min.css";
 import "highlight.js/styles/github.css";
 import { useI18n, useModuleI18n } from "@/i18n/composables";
 import { router } from "@/router";
-import { useRoute, useRouter } from "vue-router";
+import { useRoute } from "vue-router";
 import { useDisplay, useTheme } from "vuetify";
 import StyledMenu from "@/components/shared/StyledMenu.vue";
 import { Menu } from "@lucide/vue";
@@ -38,7 +38,6 @@ const chatHeader = useChatHeaderStore();
 const headerContext = useHeaderContextStore();
 const mobileDrawer = useMobileDrawerStore();
 const uiPanels = useUiPanelsStore();
-const router = useRouter();
 
 /* 后台页面右上角「去对话」：手机端登录后落后台首页，没有底部标签栏，
    需要这个入口回到对话界面（/session，手机四标签框架）。 */
