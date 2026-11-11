@@ -799,6 +799,7 @@ import RefsSidebar from "@/components/chat/message_list_comps/RefsSidebar.vue";
 import {
   ensureDefaultServerUrl,
   getServerUrl,
+  isNativeApp,
   setServerUrl,
 } from "@/composables/useServerAddress";
 import { useThinScrollbar } from "@/composables/useThinScrollbar";
