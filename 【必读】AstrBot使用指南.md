@@ -33,6 +33,8 @@
 - 七、验证要点
   - （一）前端改动
   - （二）流水线改动
+  - （三）安卓构建
+- 八、安卓应用（Capacitor）
 
 ## 一、最高指导
 
@@ -51,6 +53,7 @@
 
 1. **Custom Build**（`.github/workflows/custom-build.yml`）：推送 `4.29.0-customize` 自动触发，也可手动。流程为 pnpm 锁依赖 → 契约漂移检查 → i18n 检查 → 类型检查与打包 → 注入版本 → 算依赖指纹 → 发布滚动 Release。
 2. **Custom Image Build**（`.github/workflows/custom-image-build.yml`）：只手动触发，整镜像兜底。可勾选把镜像导出 tar.gz 上传 Release。
+3. **Android App**（`.github/workflows/android-app.yml`）：只手动触发。与主构建完全独立，产物直接进滚动 Release。详见「八、安卓应用」。
 
 ### （二）产物形态
 
@@ -58,6 +61,7 @@
 
 1. `astrbot-custom.tar.gz`（约 6.5MB）：后端源码 + 已烘入 `astrbot/dashboard/dist` 的最新前端。改前端、改后端、两个都改，下载的都是这一个包。
 2. `deps-fingerprint.txt`：`pyproject.toml`+`uv.lock`+`requirements.txt`+`dashboard/pnpm-lock.yaml` 的哈希前 16 位，用于判断能否本地组装，还是要走整镜像兜底。
+3. `astrbot-webui-debug.apk`：安卓安装包（64 位 arm64-v8a，debug 签名，手机可直装），由 Android App 流水线产出；同 Release 另存一份带提交号的副本 `astrbot-webui-<提交号>-debug.apk` 便于回溯。详见「八、安卓应用」。
 
 流水线内置两道自检，出错直接判构建失败：包内 `astrbot/dashboard/dist` 条目数不得少于 10；包内前端入口脚本名必须与本次构建产物一致。
 
@@ -78,7 +82,7 @@
 
 ### （一）当前运行实况
 
-1. 容器名 `astrbot`，镜像 `ghcr.io/observe-life/astrbot:clean-latest`（含后端本地改动 + 上游原版前端，`assets/version` 为 `v4.29.0`），启动命令 `python main.py`。
+1. 容器名 `astrbot`，镜像 `ghcr.io/observe-life/astrbot:local-<提交号>`（合并包组装产物，首装底座为 `clean-latest`，含后端本地改动 + 定制前端），启动命令 `python main.py`。测试容器镜像同名。
 2. 数据卷：`/vol1/docker/astrbot/data` → `/AstrBot/data`。
 3. 网络：`backend` + `bridge`；端口 `6185`(WebUI)、`11451`、`6194`、`6195`、`6196`、`6199`。
 4. 容器由 `docker run` 创建，**宿主机没有 compose 文件**。仓库根 `compose.yml` 是上游原版（镜像写死 `soulter/astrbot:latest`、只映射 6185/6199、无 custom-webui），不要照抄它部署。
@@ -103,7 +107,8 @@
    `ADD` 会自动解包并覆盖，只覆盖不删除，`/AstrBot/.astrbot` 安装标记保留；代码是 editable 安装，覆盖即生效，不需要重装依赖。
 3. 停旧容器 → 改名留档 → 用新镜像按原参数重建容器。脚本用 `docker inspect` 读原容器的端口、挂载、网络、环境变量、重启与日志策略后照抄，只替换镜像，并主动剔除 `custom-webui` 挂载与 `--webui-dir` 参数（前端已在镜像里，两处来源会混乱）。
 4. 等 WebUI 端口就绪（最长 180 秒），再校验线上 `index.html` 引用的脚本名与包内一致、`assets/build-info` 里的提交号一致。
-5. 任一步失败自动回滚到留档容器。
+5. **部署后必须校验容器仍挂在 `backend` 网桥**：`docker network inspect backend` 成员含容器名，且从网桥内其他容器访问 `astrbot:6185` 要通。历史上脚本解析失误导致容器掉网、凭证网关与远程 SSH 链路全断，此校验不可省。
+6. 任一步失败自动回滚到留档容器。
 
 **唯一例外**：`deps-fingerprint.txt` 与该容器现装不一致，或首次部署没有可用底座 → 走 Custom Image Build 出整镜像兜底。
 
@@ -148,7 +153,7 @@
 
 ### （四）更新 AstrBot
 
-1. WebUI 内「更新 AstrBot」走上游发版机制，**不含本分支改动**。本地更新按「三、（三）」三档处理。
+1. WebUI 内「更新 AstrBot」走上游发版机制，**不含本分支改动**。本地更新按「三、（三）」处理。
 
 ## 六、源码修改
 
@@ -194,8 +199,28 @@
 
 ### （二）流水线改动
 
-1. 推分支后确认 Custom Build 全绿，滚动 Release `customize-build` 三个资产已更新。
+1. 推分支后确认 Custom Build 全绿，滚动 Release `customize-build` 的单包与指纹已更新。
 2. 包必须做**内容级**校验，不能只比字节数：`tar tzf` 通过、包内 `astrbot/dashboard/dist` 条目数不少于 10、包内前端入口脚本名与 `dashboard/dist/index.html` 一致。只比大小会漏掉"包里缺前端"这类错误。
 3. 断点续传实测：先截断下载，再 `curl -C -` 续传，字节数须与完整一致；校验不过就删掉重下。
 4. 依赖指纹变化时，Release 说明与 `deps-fingerprint.txt` 必须同步变化。
 5. 部署后在浏览器里按 1440×900 与 360×800/DPR3 各截一张图，确认加载的脚本名与包内一致。
+
+### （三）安卓构建
+
+1. Android App 流水线全绿后，Release 新增/更新 `astrbot-webui-debug.apk`。
+2. 装真机：能打开 WebUI、登录、进聊天页即通过；名字/图标/功能的改动在重打包后同样要真机确认。
+
+## 八、安卓应用（Capacitor）
+
+### （一）结构
+
+1. 壳工程源码在 `dashboard/android/`（**进仓库**）。改 APP 名字、图标、原生功能直接改这里：名字 `app/src/main/res/values/strings.xml`、图标 `res/mipmap-*`、代码 `app/src/main/java/`，推送后重新触发构建即出新包。
+2. 流水线 `.github/workflows/android-app.yml` 只手动触发（workflow_dispatch，可指定提交号），与主构建独立。动作：检出 → 前端构建 → `cap sync` 灌进壳工程 → gradle 打包 → APK 上滚动 Release。构建机 Java 必须 21（Capacitor 8 模板要求）。
+
+### （二）关键决策
+
+1. **壳工程不动态生成**：`cap add android` 只在壳工程不存在时运行一次并自动提交入库，之后构建一律使用仓库里的源码，避免覆盖人工定制。
+2. **64 位**：gradle `ndk { abiFilters "arm64-v8a" }` 过滤，壳本身无 32 位依赖。
+3. **最低安卓版本跟随 Capacitor 8 默认值**，不自行收窄。
+4. **内网直连**：APP 内所有请求（HTTP/WS）指向「连接服务器」里填的后端内网网址。原生层发请求不受浏览器跨域策略限制，已开明文流量许可（`usesCleartextTraffic`）与混合内容许可。
+5. **「连接服务器」**：设置页底部填写后端内网网址，保存后全局生效；未连接时底部标签栏常驻、页面显示连接引导——保证首次安装就能进设置页填地址。凭据边界不变：网页登录令牌只发往配置的后端地址。
