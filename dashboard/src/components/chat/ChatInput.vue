@@ -395,6 +395,7 @@ import {
   onMounted,
   onBeforeUnmount,
 } from "vue";
+import { useThinScrollbar } from "@/composables/useThinScrollbar";
 import { useDisplay } from "vuetify";
 import {
   ArrowDown,
@@ -507,6 +508,8 @@ const isDark = computed(
 );
 
 const inputField = ref<HTMLTextAreaElement | null>(null);
+/* 输入框自绘细滚动条：textarea 不能插子元素，条画在外层 input-field-shell 上 */
+useThinScrollbar(inputField as unknown as import("vue").Ref<HTMLElement | null>);
 const imageInputRef = ref<HTMLInputElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const configSelectorRef = ref<InstanceType<typeof ConfigSelector> | null>(null);
@@ -1764,5 +1767,17 @@ defineExpose({
 
 .hidden-config-selector {
   display: none;
+}
+
+/* 输入框滚动条：隐藏原生悬浮条，由自绘细条接管 */
+.chat-textarea {
+  scrollbar-width: none;
+}
+.chat-textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+.input-field-shell {
+  position: relative;
 }
 </style>

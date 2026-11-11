@@ -53,7 +53,12 @@ function isMobileLikeViewport(): boolean {
 }
 
 router.beforeEach(async (to, from, next) => {
-  if ((to.path === '/' || to.path === '/welcome') && isMobileLikeViewport()) {
+  if (
+    (to.path === '/' || to.path === '/welcome') &&
+    isMobileLikeViewport() &&
+    from.matched.length === 0
+  ) {
+    /* 仅在冷启动（无来源页）时改落点；应用内主动进后台管理不拦截 */
     return next('/list');
   }
   if (from.name && from.path !== to.path) {

@@ -54,6 +54,19 @@ export function resolveApiUrl(path: string): string {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** WebSocket 协议：按配置的服务器地址决定（app 页面是 https://localhost，服务器是 http，必须 ws）。 */
+export function resolveWebSocketProtocol(): "ws:" | "wss:" {
+  const base = getServerUrl();
+  if (base) {
+    try {
+      return new URL(base).protocol === "https:" ? "wss:" : "ws:";
+    } catch {
+      /* 配置地址无效时回退 */
+    }
+  }
+  return window.location.protocol === "https:" ? "wss:" : "ws:";
+}
+
 /** WebSocket 主机名：仅原生环境且已配置地址时返回，否则走默认同源。 */
 export function resolveWebSocketHost(): string | undefined {
   if (!isNativeApp()) return undefined;

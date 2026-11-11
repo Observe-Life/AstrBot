@@ -556,11 +556,13 @@
         <div class="settings-card">
           <button class="settings-row" type="button" @click="openServerDialog">
             <Globe :size="20" class="settings-icon" />
-            <span class="settings-name">连接服务器</span>
-            <span
-              class="settings-value"
-              :class="{ 'settings-value--muted': !serverConnected }"
-            >{{ serverUrl || "未连接" }}</span>
+            <span class="settings-col">
+              <span class="settings-name">连接服务器</span>
+              <span
+                class="settings-value settings-value--url"
+                :class="{ 'settings-value--muted': !serverConnected }"
+              >{{ serverUrl || "未连接" }}</span>
+            </span>
             <ChevronRight :size="18" class="settings-chevron" />
           </button>
         </div>
@@ -799,6 +801,7 @@ import {
   getServerUrl,
   setServerUrl,
 } from "@/composables/useServerAddress";
+import { useThinScrollbar } from "@/composables/useThinScrollbar";
 import { useSessions, type Session } from "@/composables/useSessions";
 import {
   messageBlocks as buildMessageBlocks,
@@ -980,6 +983,8 @@ if (window.visualViewport) {
   vv.addEventListener("scroll", applyKeyboardInset);
   applyKeyboardInset();
 }
+
+useThinScrollbar(messagesContainer);
 
 const activeWorkspace = ref<WorkspaceView>("chat");
 
@@ -3139,6 +3144,29 @@ async function stopCurrentSession() {
   color: rgba(var(--v-theme-on-surface), 0.4);
 }
 
+/* 连接服务器：名称与网址两行排列，避免窄屏被挤成竖排 */
+.settings-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.settings-col .settings-name {
+  white-space: nowrap;
+}
+
+.settings-value--url {
+  max-width: 100%;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
 .chat-ui {
   /* Side panels live inside .chat-main, which already starts below the 40px
      window toolbar. Keep them flush with the content area's top edge. */
@@ -3682,6 +3710,13 @@ async function stopCurrentSession() {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  position: relative;
+  scrollbar-width: none;
+}
+.messages-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
   overscroll-behavior-y: contain;
   overflow-anchor: auto;
   padding: 24px 0 calc(var(--chat-composer-height, 82px) + 34px);
