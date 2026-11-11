@@ -95,6 +95,22 @@ jobs:
             echo "壳工程已提交入库"
           fi
 
+      - name: 固定调试签名（首次生成 keystore 并提交入库）
+        working-directory: dashboard
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/debug.keystore -storepass android -keypass android \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add android/app/debug.keystore
+            git commit -m "build(android): 固定调试签名 keystore（升级可覆盖安装）"
+            git push
+            echo "固定签名 keystore 已提交入库"
+          fi
+
       - name: 同步前端产物
         working-directory: dashboard
         run: npx --yes cap sync android

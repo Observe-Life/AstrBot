@@ -16,7 +16,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        // 固定调试签名：keystore 进仓库，云端与本地一致，升级可直接覆盖安装。
+        // keystore 不存在时（首次 clone 未自举）自动回退系统默认 debug 签名。
+        fixedDebug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
+        debug {
+            if (file('debug.keystore').exists()) {
+                signingConfig signingConfigs.fixedDebug
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
