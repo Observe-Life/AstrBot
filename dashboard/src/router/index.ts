@@ -61,8 +61,17 @@ router.beforeEach(async (to, from, next) => {
   if (to.matched.some((record) => record.meta.requiresAuth)) {
     if (authRequired && !auth.has_token()) {
       // 尚未连接服务器（安卓壳首次打开/地址未填）：登录无处可发，
-      // 先进主框架（未连接遮罩 + 设置页「连接服务器」），填好地址再登录。
+      // 主框架四标签全部放行（未连接遮罩 + 设置页「连接服务器」），其余页面落会话页。
+      // 注意：不能无脑重定向，否则会与 requiresAuth 形成循环导致白屏。
       if (!hasServerUrl()) {
+        const FRAME_PATHS = ['/list', '/session', '/extend', '/settings'];
+        if (
+          FRAME_PATHS.some(
+            (base) => to.path === base || to.path.startsWith(`${base}/`),
+          )
+        ) {
+          return next();
+        }
         return next('/session');
       }
       auth.returnUrl = to.fullPath;
