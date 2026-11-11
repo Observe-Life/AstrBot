@@ -1,12 +1,6 @@
-<!-- 本地维护：部署必读（部署前先看这里） -->
+<!-- 本地维护：唯一要点文档（部署/改动前先看） -->
 
-> **【部署必读 · 本地维护分支】** 本分支（`4.29.0-customize`）是本地长期维护分支，包含本地改动（MCP 重连补丁、决策型钩子机制、WebUI 扩展接口）。**部署/重装前必看**：
-> 1. **时区**：compose 里启用 `TZ=Asia/Shanghai` + 挂载 `/etc/localtime:ro` 与 `/etc/timezone:ro`（`compose.yml` 已配好，照抄即可），否则只读系统时区文件的程序会差 8 小时；
-> 2. **自定义前端**：构建产物放入目录后，compose 里挂载 `-v ./custom-webui:/AstrBot/custom-webui:ro` 并以 `python main.py --webui-dir /AstrBot/custom-webui` 启动；
-> 3. **本地改动生效**：镜像是官方镜像，本分支的代码改动（补丁/钩子/WebUI 扩展）需要 `docker cp` 对应文件进容器后重启，或从本分支构建自己的镜像；
-> 4. **构建**：前端用 GitHub Actions（`dashboard_build_fork.yml`，推送本分支自动触发，产物 `dist-fork`）；会话数据迁移用 SQLite backup 方式复制。
->
-> 详细部署要点见 [AGENTS.md](AGENTS.md) 的「部署要点」一节。
+> **【部署必读 · 本地维护分支】** 本仓库是 `AstrBotDevs/AstrBot` 的单人长期维护 fork，唯一维护分支 `4.29.0-customize`。所有要点只记录在根目录的 **[【必读】AstrBot使用指南.md](【必读】AstrBot使用指南.md)** 一份文档里（镜像构建、容器部署、首次配置、日常使用、源码修改、验证要点）。部署或改动前先读它，本说明不再重复内容。
 
 ![AstrBot-Logo-Simplified](https://github.com/user-attachments/assets/36fb04e4-cc75-4454-bd8b-049d11aa86f9)
 
