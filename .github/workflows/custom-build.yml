@@ -1,0 +1,160 @@
+name: Custom Build (云构建 · 产物与发布)
+
+# 通用流程：云端构建 → 产物变文件 → 服务器下载 → 本地组装
+#
+# 产物（发布到滚动 Release：customize-build，可普通 HTTP 断点续传下载）
+#   custom-webui.zip            前端静态包。挂载即用，不需要重建镜像
+#                               （compose 挂载 ./custom-webui:/AstrBot/custom-webui:ro
+#                                启动命令 python main.py --webui-dir /AstrBot/custom-webui）
+#   astrbot-custom-code.tar.gz  后端源码 + 已烘入 astrbot/dashboard/dist 的前端。
+#                               以服务器上现有镜像为底座 COPY 覆盖即可（依赖层不动）
+#   deps-fingerprint.txt        依赖清单指纹。与现装一致才能走增量组装，
+#                               变了就要走 Custom Image Build（整镜像兜底）
+
+on:
+  push:
+    branches:
+      - "4.29.0-customize"
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "是否发布到滚动 Release（customize-build）"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: custom-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.28.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.13.0"
+          cache: "pnpm"
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: Install dashboard dependencies (locked)
+        working-directory: dashboard
+        run: pnpm install --frozen-lockfile
+
+      # 契约 → 前端客户端 的一致性闸门。
+      # 后端接口或 openspec 改了但忘了重新生成，构建期本来发现不了，
+      # 装上去只会在运行时炸，所以在这里强制拦一道。
+      - name: OpenAPI contract drift check
+        working-directory: dashboard
+        run: |
+          pnpm run generate:api
+          if ! git diff --quiet -- dashboard/src/api/generated; then
+            echo "::error title=OpenAPI 生成物过期::dashboard/src/api/generated 与 openspec/openapi-v1.yaml 不一致"
+            git diff --stat -- dashboard/src/api/generated
+            echo "修复：在本地 dashboard 目录执行 pnpm run generate:api，提交生成目录后重新构建"
+            exit 1
+          fi
+          echo "OpenAPI 契约与前端生成物一致"
+
+      - name: Check i18n keys
+        working-directory: dashboard
+        run: pnpm run i18n:check
+
+      # build 脚本内含 vue-tsc --noEmit，类型不过就中断
+      - name: Type-check and build dashboard
+        working-directory: dashboard
+        run: pnpm run build
+
+      - name: Stamp version and build info
+        run: |
+          core_version=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          mkdir -p dashboard/dist/assets
+          printf '%s' "v${core_version}" > dashboard/dist/assets/version
+          {
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "commit=${GITHUB_SHA}"
+            echo "built_at=$(date -u +%FT%TZ)"
+          } > dashboard/dist/assets/build-info
+          echo "CORE_VERSION=${core_version}" >> "$GITHUB_ENV"
+
+      - name: Compute dependency fingerprint
+        id: deps
+        run: |
+          fp=$(cat pyproject.toml uv.lock requirements.txt dashboard/pnpm-lock.yaml | sha256sum | cut -c1-16)
+          echo "fingerprint=${fp}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$fp" > deps-fingerprint.txt
+          echo "依赖指纹：${fp}"
+
+      - name: Package artifacts
+        run: |
+          mkdir -p artifacts astrbot/dashboard
+          rm -rf astrbot/dashboard/dist
+          cp -r dashboard/dist astrbot/dashboard/dist
+
+          # 前端静态包（解压即为 webui 根目录）
+          ( cd dashboard/dist && zip -qr "${GITHUB_WORKSPACE}/artifacts/custom-webui.zip" . )
+
+          # 代码包（后端源码 + 烘入的 dist）
+          tar --exclude=.git --exclude=node_modules --exclude=artifacts \
+              --exclude=dashboard/dist --exclude=astrbot/dashboard/dist.orig \
+              -czf artifacts/astrbot-custom-code.tar.gz .
+
+          ls -lh artifacts deps-fingerprint.txt
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: custom-build-v${{ env.CORE_VERSION }}-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            artifacts/custom-webui.zip
+            artifacts/astrbot-custom-code.tar.gz
+            deps-fingerprint.txt
+            dashboard/dist/assets/build-info
+
+      - name: Publish rolling release assets
+        if: ${{ inputs.publish_release != false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="customize-build"
+          FP="${{ steps.deps.outputs.fingerprint }}"
+          NOTES="自动构建产物，每次推送覆盖。固定下载入口：Releases → ${TAG}
+
+          - 分支：${GITHUB_REF_NAME}
+          - 提交：${GITHUB_SHA}
+          - 核心版本：v${CORE_VERSION}
+          - 依赖指纹：${FP}
+
+          ## 三种用法
+
+          1. **只改前端** → 下 custom-webui.zip，解压到宿主机 custom-webui/，
+             compose 挂载 ./custom-webui:/AstrBot/custom-webui:ro，
+             启动命令 python main.py --webui-dir /AstrBot/custom-webui。不重建镜像。
+          2. **改了后端，且依赖指纹与现装一致** → 下 astrbot-custom-code.tar.gz，
+             以服务器上现有镜像为底座，三行 Dockerfile 覆盖 /AstrBot 代码后重启。
+          3. **依赖指纹变了 / 首次部署** → 走 Custom Image Build 出整镜像。"
+
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "自定义构建（滚动）" --target "$GITHUB_REF_NAME" --notes "$NOTES"
+          gh release edit "$TAG" --notes "$NOTES"
+          gh release upload "$TAG" \
+            artifacts/custom-webui.zip \
+            artifacts/astrbot-custom-code.tar.gz \
+            deps-fingerprint.txt \
+            --clobber
+
+          echo "已发布资产："
+          gh release view "$TAG" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size) bytes\t\(.url)"'

@@ -1,54 +1,102 @@
-name: Custom Image Build
+name: Custom Image Build (分支三 · 整镜像兜底)
+
+# 只在两种情况下手动触发：
+#   1) 首次部署，服务器上没有可当底座的旧镜像
+#   2) 依赖清单变了（deps-fingerprint.txt 与现装不一致），增量组装补不齐依赖
+# 日常前后端改动请走 Custom Build，不要动这条。
 
 on:
   workflow_dispatch:
+    inputs:
+      export_tarball:
+        description: "同时把镜像导出成 tar.gz 传到 Release（首次部署用，体积大、耗时长）"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
+
+concurrency:
+  group: custom-image-build
+  cancel-in-progress: false
 
 jobs:
   build-custom-image:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Build Dashboard
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 10.28.2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24.13.0"
+          cache: "pnpm"
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      # 与 Custom Build 保持同一套闸门，避免两条路径装出不同依赖
+      - name: Install dashboard dependencies (locked)
+        working-directory: dashboard
+        run: pnpm install --frozen-lockfile
+
+      - name: OpenAPI contract drift check
+        working-directory: dashboard
         run: |
-          dashboard_version=$(python3 - <<PY
-          import tomllib
-          with open("pyproject.toml", "rb") as f:
-              print("v" + tomllib.load(f)["project"]["version"])
-          PY
-          )
-          cd dashboard
-          npm install
-          npm run build
-          mkdir -p dist/assets
-          echo "$dashboard_version" > dist/assets/version
-          cd ..
-          mkdir -p astrbot/dashboard
+          pnpm run generate:api
+          if ! git diff --quiet -- dashboard/src/api/generated; then
+            echo "::error title=OpenAPI 生成物过期::dashboard/src/api/generated 与 openspec/openapi-v1.yaml 不一致"
+            git diff --stat -- dashboard/src/api/generated
+            exit 1
+          fi
+
+      - name: Check i18n keys
+        working-directory: dashboard
+        run: pnpm run i18n:check
+
+      - name: Type-check and build dashboard
+        working-directory: dashboard
+        run: pnpm run build
+
+      - name: Bake dashboard dist into the package tree
+        run: |
+          core_version=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "CORE_VERSION=${core_version}" >> "$GITHUB_ENV"
+          mkdir -p dashboard/dist/assets astrbot/dashboard
+          printf '%s' "v${core_version}" > dashboard/dist/assets/version
           rm -rf astrbot/dashboard/dist
           cp -r dashboard/dist astrbot/dashboard/dist
+
+      - name: Compute dependency fingerprint
+        id: deps
+        run: |
+          fp=$(cat pyproject.toml uv.lock requirements.txt dashboard/pnpm-lock.yaml | sha256sum | cut -c1-16)
+          echo "fingerprint=${fp}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$fp" > deps-fingerprint.txt
 
       - name: Generate Dockerfile.custom (upstream Dockerfile + baked TZ)
         run: |
           cp Dockerfile Dockerfile.custom
           printf "\nENV TZ=Asia/Shanghai\n" >> Dockerfile.custom
-          tail -5 Dockerfile.custom
+          tail -3 Dockerfile.custom
 
       - name: Set Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Build and Push
+      - name: Build and push custom image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -58,3 +106,19 @@ jobs:
           tags: |
             ghcr.io/observe-life/astrbot:4.29.0-customize
             ghcr.io/observe-life/astrbot:customize-latest
+            ghcr.io/observe-life/astrbot:v${{ env.CORE_VERSION }}-custom.${{ github.sha }}
+          outputs: ${{ inputs.export_tarball && 'type=docker,dest=/tmp/astrbot-custom-image.tar' || '' }}
+
+      - name: Export image tarball to release
+        if: ${{ inputs.export_tarball }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="customize-image"
+          gzip -c /tmp/astrbot-custom-image.tar > astrbot-custom-image.tar.gz
+          ls -lh astrbot-custom-image.tar.gz
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "自定义整镜像（兜底）" --target "$GITHUB_REF_NAME" \
+                 --notes "整镜像导出，仅用于首次部署或依赖层变化。依赖指纹：${{ steps.deps.outputs.fingerprint }}"
+          gh release upload "$TAG" astrbot-custom-image.tar.gz deps-fingerprint.txt --clobber
+          echo "已上传：$(gh release view "$TAG" --json assets --jq '.assets[].name' | tr '\n' ' ')"
