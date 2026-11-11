@@ -2,14 +2,12 @@ name: Custom Build (云构建 · 产物与发布)
 
 # 通用流程：云端构建 → 产物变文件 → 服务器下载 → 本地组装
 #
+# 只出一个包，避免"选错包"。
 # 产物（发布到滚动 Release：customize-build，可普通 HTTP 断点续传下载）
-#   custom-webui.zip            前端静态包。挂载即用，不需要重建镜像
-#                               （compose 挂载 ./custom-webui:/AstrBot/custom-webui:ro
-#                                启动命令 python main.py --webui-dir /AstrBot/custom-webui）
-#   astrbot-custom-code.tar.gz  后端源码 + 已烘入 astrbot/dashboard/dist 的前端。
-#                               以服务器上现有镜像为底座 COPY 覆盖即可（依赖层不动）
-#   deps-fingerprint.txt        依赖清单指纹。与现装一致才能走增量组装，
-#                               变了就要走 Custom Image Build（整镜像兜底）
+#   astrbot-custom.tar.gz   后端源码 + 已烘入 astrbot/dashboard/dist 的最新前端。
+#                           改前端、改后端、两个都改，下载的都是这一个包。
+#   deps-fingerprint.txt    依赖清单指纹。与现装一致 → 本地组装镜像即可；
+#                           变了 → 走 Custom Image Build 整镜像兜底。
 
 on:
   push:
@@ -96,28 +94,34 @@ jobs:
           printf '%s\n' "$fp" > deps-fingerprint.txt
           echo "依赖指纹：${fp}"
 
-      - name: Package artifacts
+      - name: Package the single bundle
         run: |
           mkdir -p artifacts astrbot/dashboard
           rm -rf astrbot/dashboard/dist
           cp -r dashboard/dist astrbot/dashboard/dist
 
-          # 前端静态包（解压即为 webui 根目录）
-          ( cd dashboard/dist && zip -qr "${GITHUB_WORKSPACE}/artifacts/custom-webui.zip" . )
-
-          # 代码包（后端源码 + 烘入的 dist）
-          # 注意：tar 的 --exclude 默认非锚定，写成 dashboard/dist 会连
-          # astrbot/dashboard/dist 一起排掉，所以这里必须 anchored + 带 ./ 前缀
+          # 唯一交付物：后端源码 + 烘入的最新前端。
+          # tar 的 --exclude 默认非锚定，直接写 dashboard/dist 会连
+          # astrbot/dashboard/dist 一起排掉，所以必须 anchored + 带 ./ 前缀。
           tar --anchored \
               --exclude=./.git --exclude=./artifacts \
               --exclude=./dashboard/dist --exclude=./dashboard/node_modules \
-              -czf artifacts/astrbot-custom-code.tar.gz .
+              -czf artifacts/astrbot-custom.tar.gz .
 
-          # 自检：代码包里必须带上前端产物，否则装出来的镜像前端是旧的
-          baked=$(tar tzf artifacts/astrbot-custom-code.tar.gz | grep -c 'astrbot/dashboard/dist/')
-          echo "代码包内 astrbot/dashboard/dist 条目数：$baked"
+          # 自检 1：包里必须带前端产物，否则装出来的镜像前端是旧的
+          baked=$(tar tzf artifacts/astrbot-custom.tar.gz | grep -c 'astrbot/dashboard/dist/')
+          echo "包内 astrbot/dashboard/dist 条目数：$baked"
           if [ "$baked" -lt 10 ]; then
-            echo "::error title=代码包缺少前端产物::astrbot/dashboard/dist 没有被打进包里"
+            echo "::error title=包缺少前端产物::astrbot/dashboard/dist 没有被打进包里"
+            exit 1
+          fi
+
+          # 自检 2：包内前端入口与 dist 一致，避免打进旧文件
+          want=$(grep -o 'assets/index-[A-Za-z0-9_-]*\.js' dashboard/dist/index.html | head -1)
+          got=$(tar xzf artifacts/astrbot-custom.tar.gz -O ./astrbot/dashboard/dist/index.html | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1)
+          echo "dist 入口：$want / 包内入口：$got"
+          if [ "$want" != "$got" ]; then
+            echo "::error title=包内前端与构建产物不一致::$want != $got"
             exit 1
           fi
 
@@ -129,8 +133,7 @@ jobs:
           name: custom-build-v${{ env.CORE_VERSION }}-${{ github.sha }}
           if-no-files-found: error
           path: |
-            artifacts/custom-webui.zip
-            artifacts/astrbot-custom-code.tar.gz
+            artifacts/astrbot-custom.tar.gz
             deps-fingerprint.txt
             dashboard/dist/assets/build-info
 
@@ -149,21 +152,19 @@ jobs:
           - 核心版本：v${CORE_VERSION}
           - 依赖指纹：${FP}
 
-          ## 三种用法
+          ## 只有一个包，只有一条路
 
-          1. **只改前端** → 下 custom-webui.zip，解压到宿主机 custom-webui/，
-             compose 挂载 ./custom-webui:/AstrBot/custom-webui:ro，
-             启动命令 python main.py --webui-dir /AstrBot/custom-webui。不重建镜像。
-          2. **改了后端，且依赖指纹与现装一致** → 下 astrbot-custom-code.tar.gz，
-             以服务器上现有镜像为底座，三行 Dockerfile 覆盖 /AstrBot 代码后重启。
-          3. **依赖指纹变了 / 首次部署** → 走 Custom Image Build 出整镜像。"
+          下 astrbot-custom.tar.gz（后端源码 + 最新前端），以服务器上现有镜像为底座，
+          两行 Dockerfile 组装出新镜像，再用新镜像重建容器。
+          改前端、改后端、两个都改，动作都一样，不存在选错包。
+
+          例外：依赖指纹与现装不一致（或首次部署）→ 走 Custom Image Build 整镜像兜底。"
 
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --title "自定义构建（滚动）" --target "$GITHUB_REF_NAME" --notes "$NOTES"
           gh release edit "$TAG" --notes "$NOTES"
           gh release upload "$TAG" \
-            artifacts/custom-webui.zip \
-            artifacts/astrbot-custom-code.tar.gz \
+            artifacts/astrbot-custom.tar.gz \
             deps-fingerprint.txt \
             --clobber
 

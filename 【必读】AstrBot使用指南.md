@@ -13,7 +13,7 @@
 - 三、容器部署
   - （一）当前运行实况
   - （二）时区三件套
-  - （三）升级三档
+  - （三）升级只有一条路
   - （四）回退
   - （五）注意事项
 - 四、首次配置
@@ -54,11 +54,12 @@
 
 ### （二）产物形态
 
-滚动 Release 固定入口：`customize-build`（公开直链，支持断点续传）。
+滚动 Release 固定入口：`customize-build`（公开直链，支持断点续传）。**只有一个包，不再区分前端包与后端包。**
 
-1. `custom-webui.zip`（约 5.1MB）：前端静态包，解压即 webui 根目录。
-2. `astrbot-custom-code.tar.gz`（约 6.5MB）：后端源码 + 已烘入 `astrbot/dashboard/dist` 的前端。
-3. `deps-fingerprint.txt`：`pyproject.toml`+`uv.lock`+`requirements.txt`+`dashboard/pnpm-lock.yaml` 的哈希前 16 位，用于判断能否增量组装。
+1. `astrbot-custom.tar.gz`（约 6.5MB）：后端源码 + 已烘入 `astrbot/dashboard/dist` 的最新前端。改前端、改后端、两个都改，下载的都是这一个包。
+2. `deps-fingerprint.txt`：`pyproject.toml`+`uv.lock`+`requirements.txt`+`dashboard/pnpm-lock.yaml` 的哈希前 16 位，用于判断能否本地组装，还是要走整镜像兜底。
+
+流水线内置两道自检，出错直接判构建失败：包内 `astrbot/dashboard/dist` 条目数不得少于 10；包内前端入口脚本名必须与本次构建产物一致。
 
 ### （三）构建闸门
 
@@ -81,20 +82,35 @@
 2. 数据卷：`/vol1/docker/astrbot/data` → `/AstrBot/data`。
 3. 网络：`backend` + `bridge`；端口 `6185`(WebUI)、`11451`、`6194`、`6195`、`6196`、`6199`。
 4. 容器由 `docker run` 创建，**宿主机没有 compose 文件**。仓库根 `compose.yml` 是上游原版（镜像写死 `soulter/astrbot:latest`、只映射 6185/6199、无 custom-webui），不要照抄它部署。
+5. 测试实例 `astrbot-test`（WebUI 端口 6186，数据卷 `/vol1/docker/astrbot-test/data`）与主力实例使用**同一个包、同一个脚本、同一套动作**，只是容器名与端口不同。测试通过才算可以上主力。
 
 ### （二）时区三件套
 
 1. `TZ=Asia/Shanghai` + 挂载 `/etc/localtime:ro` + `/etc/timezone:ro`，三者缺一不可。只设 `TZ` 时，只读系统时区文件的程序会按 UTC 走，差 8 小时。
 
-### （三）升级三档
+### （三）升级只有一条路
 
-1. **只改前端**：下载 `custom-webui.zip` 解压到宿主机 `custom-webui/`，加挂载 `-v ./custom-webui:/AstrBot/custom-webui:ro`，启动命令改为 `python main.py --webui-dir /AstrBot/custom-webui`，重启容器。不重建镜像。
-2. **改了后端、依赖指纹与现装一致**：下载 `astrbot-custom-code.tar.gz`，以服务器上现有镜像为底座，三行 Dockerfile 覆盖 `/AstrBot` 代码。代码是 editable 安装（site-packages 里只有一个 `.pth` 指向 `/AstrBot/astrbot`），覆盖即生效，不需要重装依赖。
-3. **依赖指纹变了 / 首次部署**：走 Custom Image Build 出整镜像，或导出 tar.gz 到服务器 `docker load`。
+日常升级不分前端后端，动作完全相同，脚本 `/vol1/docker/astrbot-deploy.sh <容器名>`：
+
+1. 下载 `astrbot-custom.tar.gz`，**先校验再使用**：`tar tzf` 必须通过，且包内 `astrbot/dashboard/dist` 条目数不少于 10。用断点续传时，若本地残留旧包会拼成坏包，所以校验不过就删掉重下，不许续传后直接用。
+2. 以该容器**当前正在用的镜像**为底座，两行 Dockerfile 组装新镜像（不联网，约 15 秒）：
+
+   ```
+   FROM <本地底座镜像>
+   ADD astrbot-custom.tar.gz /AstrBot/
+   ```
+
+   `ADD` 会自动解包并覆盖，只覆盖不删除，`/AstrBot/.astrbot` 安装标记保留；代码是 editable 安装，覆盖即生效，不需要重装依赖。
+3. 停旧容器 → 改名留档 → 用新镜像按原参数重建容器。脚本用 `docker inspect` 读原容器的端口、挂载、网络、环境变量、重启与日志策略后照抄，只替换镜像，并主动剔除 `custom-webui` 挂载与 `--webui-dir` 参数（前端已在镜像里，两处来源会混乱）。
+4. 等 WebUI 端口就绪（最长 180 秒），再校验线上 `index.html` 引用的脚本名与包内一致、`assets/build-info` 里的提交号一致。
+5. 任一步失败自动回滚到留档容器。
+
+**唯一例外**：`deps-fingerprint.txt` 与该容器现装不一致，或首次部署没有可用底座 → 走 Custom Image Build 出整镜像兜底。
 
 ### （四）回退
 
-1. 升级脚本 `/vol1/docker/astrbot-upgrade.sh`：停旧容器 → 改名留档（如 `astrbot-v4282-rollback`）→ 起新容器 → 自检 6185，失败自动改名回退。留档容器改名后要先释放它占用的网络名。
+1. 主力实例的历史升级脚本 `/vol1/docker/astrbot-upgrade.sh`（换版本用）：停旧容器 → 改名留档（如 `astrbot-v4282-rollback`）→ 起新容器 → 自检 6185，失败自动改名回退。留档容器改名后要先释放它占用的网络名。
+2. 日常升级用 `/vol1/docker/astrbot-deploy.sh`，留档名格式 `<容器名>-rollback-<时间戳>`，失败自动回滚。确认无误后再 `docker rm` 清掉留档容器。
 
 ### （五）注意事项
 
@@ -179,5 +195,7 @@
 ### （二）流水线改动
 
 1. 推分支后确认 Custom Build 全绿，滚动 Release `customize-build` 三个资产已更新。
-2. 断点续传实测：先截断下载，再 `curl -C -` 续传，字节数须与完整一致。
-3. 依赖指纹变化时，Release 说明与 `deps-fingerprint.txt` 必须同步变化。
+2. 包必须做**内容级**校验，不能只比字节数：`tar tzf` 通过、包内 `astrbot/dashboard/dist` 条目数不少于 10、包内前端入口脚本名与 `dashboard/dist/index.html` 一致。只比大小会漏掉"包里缺前端"这类错误。
+3. 断点续传实测：先截断下载，再 `curl -C -` 续传，字节数须与完整一致；校验不过就删掉重下。
+4. 依赖指纹变化时，Release 说明与 `deps-fingerprint.txt` 必须同步变化。
+5. 部署后在浏览器里按 1440×900 与 360×800/DPR3 各截一张图，确认加载的脚本名与包内一致。
