@@ -6,12 +6,11 @@
     "allowMixedContent": true
   },
   "server": {
-    "androidScheme": "http",
-    "cleartext": true
+    "androidScheme": "https"
   },
   "plugins": {
     "CapacitorHttp": {
-      "enabled": false
+      "enabled": true
     }
   }
 }

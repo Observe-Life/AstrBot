@@ -12,6 +12,9 @@ importers:
 
   .:
     dependencies:
+      capacitor-stream-http:
+        specifier: ^0.2.2
+        version: 0.2.2(@capacitor/core@8.6.0)
       '@guolao/vue-monaco-editor':
         specifier: ^1.5.4
         version: 1.6.0(monaco-editor@0.52.2)(vue@3.3.4)
@@ -192,6 +195,11 @@ importers:
         version: 2.0.0-alpha.9(@vue/compiler-sfc@3.3.4)(vue@3.3.4)(vuetify@3.7.11)(webpack@5.105.0)
 
 packages:
+  capacitor-stream-http@0.2.2:
+    resolution: {integrity: sha512-c2tT0nYNe9/Ol84zhRsLSYGOeQKn0F1UcnMnS9se6QoVROCN9JZVnPpMpIe/WDq/L+7AsQmkKaanWTAk2dInaA==}
+    peerDependencies:
+      '@capacitor/core': ^7.0.0
+
 
   '@antfu/install-pkg@1.1.0':
     resolution: {integrity: sha512-MGQsmw10ZyI+EJo45CdSER4zEb+p31LpDAFp2Z3gkSd1yqVZGi0Ebx++YTEMonJy4oChEMLsxZ64j8FH6sSqtQ==}
@@ -3548,6 +3556,10 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+  capacitor-stream-http@0.2.2(@capacitor/core@8.6.0):
+    dependencies:
+      '@capacitor/core': 8.6.0
+
 
   '@antfu/install-pkg@1.1.0':
     dependencies:
