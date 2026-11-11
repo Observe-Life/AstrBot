@@ -12,13 +12,10 @@ name: Custom Build (云构建 · 产物与发布)
 on:
   push:
     branches:
-      - 4.29.0-customize
+      - "4.29.0-customize"
     paths-ignore:
       - "**.md"
       - "docs/**"
-  push:
-    branches:
-      - "4.29.0-customize"
   workflow_dispatch:
     inputs:
       publish_release:
