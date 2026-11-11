@@ -3,6 +3,7 @@ import MainRoutes from './MainRoutes';
 import AuthRoutes from './AuthRoutes';
 import ChatBoxRoutes from './ChatBoxRoutes';
 import { useAuthStore } from '@/stores/auth';
+import { hasServerUrl } from '@/composables/useServerAddress';
 import { useRouterLoadingStore } from '@/stores/routerLoading';
 
 /*
@@ -59,6 +60,11 @@ router.beforeEach(async (to, from, next) => {
 
   if (to.matched.some((record) => record.meta.requiresAuth)) {
     if (authRequired && !auth.has_token()) {
+      // 尚未连接服务器（安卓壳首次打开/地址未填）：登录无处可发，
+      // 先进主框架（未连接遮罩 + 设置页「连接服务器」），填好地址再登录。
+      if (!hasServerUrl()) {
+        return next('/session');
+      }
       auth.returnUrl = to.fullPath;
       return next('/auth/login');
     }
