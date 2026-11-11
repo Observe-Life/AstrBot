@@ -423,14 +423,18 @@
     </main>
 
     <section
-      v-else-if="activeTab === 'extensions'"
+      v-if="activeTab === 'extensions'"
       class="chat-tab chat-tab--blank"
       :class="tabAnimClass"
     >
       <p class="tab-blank-text">敬请期待</p>
     </section>
 
-    <section v-else class="chat-tab chat-tab--settings" :class="tabAnimClass">
+    <section
+      v-if="activeTab === 'settings'"
+      class="chat-tab chat-tab--settings"
+      :class="tabAnimClass"
+    >
       <!-- 二级页：模型配置 -->
       <div v-if="settingsSub === 'providers'" class="settings-subpage-provider">
         <button class="settings-back" type="button" @click="settingsSub = null">

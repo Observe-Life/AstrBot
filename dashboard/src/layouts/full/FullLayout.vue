@@ -222,10 +222,13 @@ onMounted(() => {
   --v-layout-top: 0px !important;
 }
 
-/* Keep the card frame fixed while its content scrolls inside the rounded edges. */
+/* Keep the card frame fixed while its content scrolls inside the rounded edges.
+   Height must fill whatever the v-main gets: v-main is a flex child that can be
+   taller than the toolbar-less viewport, so a 100dvh-based height leaves a blank
+   strip at the bottom. */
 :global(.page-wrapper) {
   --astrbot-content-gap: 6px;
-  height: calc(100dvh - var(--astrbot-toolbar-height, 40px) - var(--astrbot-content-gap)) !important;
+  height: 100% !important;
   width: calc(100% - var(--astrbot-content-gap));
   min-height: 0;
   margin: 0;
