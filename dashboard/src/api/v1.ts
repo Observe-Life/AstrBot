@@ -1,3 +1,4 @@
+import { resolveWebSocketHost } from '@/composables/useServerAddress';
 import type { AxiosRequestConfig, AxiosResponse } from 'axios';
 
 import * as openApiV1 from './generated/openapi-v1';
@@ -815,11 +816,11 @@ export const chatApi = {
   resumeRunStreamUrl(runId: string) {
     return `/api/v1/chat/runs/${encodeURIComponent(runId)}/stream`;
   },
-  liveWebSocketUrl(token: string, host = window.location.host) {
+  liveWebSocketUrl(token: string, host = resolveWebSocketHost() ?? window.location.host) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${host}/api/v1/live-chat/ws?token=${encodeURIComponent(token)}`;
   },
-  unifiedWebSocketUrl(token: string, host = window.location.host) {
+  unifiedWebSocketUrl(token: string, host = resolveWebSocketHost() ?? window.location.host) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     return `${protocol}//${host}/api/v1/unified-chat/ws?token=${encodeURIComponent(token)}`;
   },

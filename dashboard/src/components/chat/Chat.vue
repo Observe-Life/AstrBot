@@ -552,6 +552,18 @@
             <span class="settings-name">退出登录</span>
           </button>
         </div>
+
+        <div class="settings-card">
+          <button class="settings-row" type="button" @click="openServerDialog">
+            <Globe :size="20" class="settings-icon" />
+            <span class="settings-name">连接服务器</span>
+            <span
+              class="settings-value"
+              :class="{ 'settings-value--muted': !serverConnected }"
+            >{{ serverUrl || "未连接" }}</span>
+            <ChevronRight :size="18" class="settings-chevron" />
+          </button>
+        </div>
       </div>
     </section>
 
@@ -563,6 +575,26 @@
       v-model:transport-mode="transportMode"
     />
 
+    </div>
+
+    <div
+      v-if="!serverConnected && activeTab !== 'settings'"
+      class="server-offline-mask"
+    >
+      <div class="server-offline-card">
+        <Unplug :size="44" class="server-offline-icon" />
+        <div class="server-offline-title">未连接服务器</div>
+        <p class="server-offline-text">
+          先到「设置」页填写 AstrBot 后端网址，连接后即可使用聊天与列表。
+        </p>
+        <button
+          class="server-offline-btn"
+          type="button"
+          @click="openServerDialog"
+        >
+          去连接
+        </button>
+      </div>
     </div>
 
     <nav v-if="!searchOpen" class="chat-tabbar" aria-label="主导航">
@@ -594,6 +626,47 @@
       >
         {{ tm("thread.askInThread") }}
       </button>
+    </div>
+
+    <div
+      v-if="serverDialogOpen"
+      class="server-dialog-mask"
+      @click.self="serverDialogOpen = false"
+    >
+      <div class="server-dialog" role="dialog" aria-label="连接服务器">
+        <div class="server-dialog-title">连接服务器</div>
+        <input
+          v-model="serverDraft"
+          class="server-dialog-input"
+          type="url"
+          inputmode="url"
+          enterkeyhint="done"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="http://192.168.31.115:6185"
+          @keydown.enter.prevent="saveServerUrl"
+        />
+        <p class="server-dialog-hint">
+          填 AstrBot 后端的内网网址，例如 http://192.168.31.115:6185
+        </p>
+        <div class="server-dialog-actions">
+          <button
+            v-if="serverConnected"
+            class="server-dialog-btn"
+            type="button"
+            @click="disconnectServer"
+          >
+            断开
+          </button>
+          <button
+            class="server-dialog-btn server-dialog-btn--primary"
+            type="button"
+            @click="saveServerUrl"
+          >
+            确定
+          </button>
+        </div>
+      </div>
     </div>
 
     <ProjectDialog
@@ -698,6 +771,8 @@ import {
   Trash2,
   User,
   X,
+  Globe,
+  Unplug,
 } from "@lucide/vue";
 import { chatApi, conversationApi, providerApi } from "@/api/v1";
 import { webuiExtApi } from "@/api/webuiExt";
@@ -719,6 +794,11 @@ import ReasoningSidebar from "@/components/chat/ReasoningSidebar.vue";
 import ThreadPanel from "@/components/chat/ThreadPanel.vue";
 import WorkspaceFilesPanel from "@/components/chat/WorkspaceFilesPanel.vue";
 import RefsSidebar from "@/components/chat/message_list_comps/RefsSidebar.vue";
+import {
+  ensureDefaultServerUrl,
+  getServerUrl,
+  setServerUrl,
+} from "@/composables/useServerAddress";
 import { useSessions, type Session } from "@/composables/useSessions";
 import {
   messageBlocks as buildMessageBlocks,
@@ -850,6 +930,55 @@ type WorkspaceView = "chat" | "providers";
 interface TokenProviderConfig extends ProviderMetadataSource {
   id: string;
   enable?: boolean;
+}
+
+/* ── 连接服务器 ──────────────────────────────
+ * 填写 AstrBot 后端内网网址后，安卓壳里所有请求（HTTP/WS）都指向它；
+ * 浏览器开发模式数据仍由 vite 代理提供，地址仅作状态记录。 */
+const serverUrl = ref(getServerUrl());
+const serverDialogOpen = ref(false);
+const serverDraft = ref("");
+const serverConnected = computed(() => Boolean(serverUrl.value.trim()));
+function openServerDialog() {
+  serverDraft.value = serverUrl.value || "http://192.168.31.115:6185";
+  serverDialogOpen.value = true;
+}
+function saveServerUrl() {
+  serverUrl.value = setServerUrl(serverDraft.value);
+  serverDialogOpen.value = false;
+  /* 重载以按新地址重建数据与连接 */
+  window.location.reload();
+}
+function disconnectServer() {
+  serverUrl.value = setServerUrl("");
+  serverDialogOpen.value = false;
+  window.location.reload();
+}
+ensureDefaultServerUrl();
+serverUrl.value = getServerUrl();
+
+/* ── 输入法键盘避让 ──────────────────────────
+ * 键盘高度写入 --chat-kb-inset，聊天外壳随键盘上移；弹出时消息滚到底。
+ * 配合 index.html 的 interactive-widget=resizes-content：支持的浏览器
+ * 布局视口自动收缩（此时插入量为 0），两者互补不叠加。 */
+if (window.visualViewport) {
+  const vv = window.visualViewport;
+  const applyKeyboardInset = () => {
+    const kb = Math.max(
+      0,
+      Math.round(window.innerHeight - vv.height - vv.offsetTop),
+    );
+    document.documentElement.style.setProperty(
+      "--chat-kb-inset",
+      `${kb}px`,
+    );
+    if (kb > 0 && activeTab.value === "chat") {
+      window.setTimeout(() => scrollToBottom(false), 80);
+    }
+  };
+  vv.addEventListener("resize", applyKeyboardInset);
+  vv.addEventListener("scroll", applyKeyboardInset);
+  applyKeyboardInset();
 }
 
 const activeWorkspace = ref<WorkspaceView>("chat");
@@ -2873,6 +3002,143 @@ async function stopCurrentSession() {
 </script>
 
 <style scoped>
+/* ── 连接服务器与键盘避让 ── */
+.chat-ui {
+  padding-bottom: var(--chat-kb-inset, 0px);
+}
+
+.chat-tabbar {
+  position: relative;
+  z-index: 81;
+}
+
+.server-offline-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--chat-page-bg, #fff);
+}
+
+.server-offline-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  max-width: 280px;
+}
+
+.server-offline-icon {
+  color: rgba(var(--v-theme-on-surface), 0.35);
+}
+
+.server-offline-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.server-offline-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+}
+
+.server-offline-btn {
+  margin-top: 10px;
+  padding: 9px 26px;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(1, 102, 255);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.server-dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.server-dialog {
+  width: 100%;
+  max-width: 340px;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  border-radius: 18px;
+  padding: 20px 18px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+.server-dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.server-dialog-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.18);
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.server-dialog-input:focus {
+  border-color: rgb(1, 102, 255);
+}
+
+.server-dialog-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(var(--v-theme-on-surface), 0.55);
+}
+
+.server-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.server-dialog-btn {
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(var(--v-theme-on-surface), 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.server-dialog-btn--primary {
+  background: rgb(1, 102, 255);
+  color: #fff;
+}
+
+.settings-value--muted {
+  color: rgba(var(--v-theme-on-surface), 0.4);
+}
+
 .chat-ui {
   /* Side panels live inside .chat-main, which already starts below the 40px
      window toolbar. Keep them flush with the content area's top edge. */

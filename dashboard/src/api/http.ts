@@ -1,3 +1,8 @@
+import {
+  getServerUrl,
+  isNativeApp,
+  resolveApiUrl,
+} from '@/composables/useServerAddress';
 import axios, {
   type AxiosError,
   type AxiosInstance,
@@ -33,11 +38,46 @@ function setAxiosHeader(
   headers[key] = value;
 }
 
+/**
+ * 配置的服务器地址（安卓壳）与页面同源一样，都属于第一方；
+ * 其余跨域目标仍不携带仪表盘凭据。
+ */
+function isFirstPartyOrigin(origin: string): boolean {
+  if (origin === window.location.origin) return true;
+  try {
+    const base = getServerUrl();
+    return Boolean(base) && origin === new URL(base).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 安卓壳里把相对 API 地址改写到配置的服务器；
+ * 浏览器开发模式保持相对路径（走 vite 代理）。
+ */
+function rewriteToServerUrl(config: InternalAxiosRequestConfig) {
+  try {
+    if (!isNativeApp()) return config;
+    const url = config.url || '';
+    if (/^([a-z][a-z\d+\-.]*:)?\/\//i.test(url)) return config;
+    const base = config.baseURL || '';
+    const combined = base
+      ? `${base.replace(/\/+$/, '')}/${url.replace(/^\/+/, '')}`
+      : url;
+    config.url = resolveApiUrl(combined);
+    config.baseURL = undefined;
+  } catch {
+    /* 解析失败保持原样 */
+  }
+  return config;
+}
+
 function attachAxiosHeaders(config: InternalAxiosRequestConfig) {
   // Dashboard credentials must not be attached to third-party requests.
   try {
     const requestUrl = new URL(axios.getUri(config), window.location.href);
-    if (requestUrl.origin !== window.location.origin) return config;
+    if (!isFirstPartyOrigin(requestUrl.origin)) return config;
   } catch {
     return config;
   }
@@ -115,6 +155,7 @@ function normalizeAxiosError(error: AxiosError) {
 }
 
 function installAxiosInterceptors(instance: AxiosInstance) {
+  instance.interceptors.request.use(rewriteToServerUrl);
   instance.interceptors.request.use(attachAxiosHeaders);
   instance.interceptors.response.use((response) => response, normalizeAxiosError);
 }
@@ -127,7 +168,7 @@ export function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit) {
       input instanceof Request ? input.url : input,
       window.location.href,
     );
-    if (requestUrl.origin !== window.location.origin) {
+    if (!isFirstPartyOrigin(requestUrl.origin)) {
       return fetchImpl(input, init);
     }
   } catch {
