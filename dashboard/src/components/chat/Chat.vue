@@ -996,6 +996,9 @@ if (window.visualViewport) {
   };
   vv.addEventListener("resize", applyKeyboardInset);
   vv.addEventListener("scroll", applyKeyboardInset);
+  /* 窗口被键盘压缩时（adjustResize），布局视口本身变化，visualViewport 的事件不触发，
+   * 必须监听 window.resize 才能更新键盘状态 */
+  window.addEventListener("resize", applyKeyboardInset);
   applyKeyboardInset();
 }
 
