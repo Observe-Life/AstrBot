@@ -984,8 +984,6 @@ if (window.visualViewport) {
   applyKeyboardInset();
 }
 
-useThinScrollbar(messagesContainer);
-
 const activeWorkspace = ref<WorkspaceView>("chat");
 
 /* 底部标签页：列表 / 会话 / 扩展 / 设置 */
@@ -1233,6 +1231,9 @@ const tokenProviderConfigs = ref<TokenProviderConfig[]>([]);
 const tokenModelMetadata = ref<Record<string, ProviderModelMetadata>>({});
 const selectedTokenProviderId = ref("");
 const messagesContainer = ref<HTMLElement | null>(null);
+
+/* 消息区自绘细滚动条（必须在 messagesContainer 声明后调用，防 TDZ） */
+useThinScrollbar(messagesContainer);
 const sidebarContent = ref<HTMLElement | null>(null);
 const sidebarProjects = ref<InstanceType<typeof ProjectList> | null>(null);
 const sidebarProjectElement = computed<HTMLElement | null>(
