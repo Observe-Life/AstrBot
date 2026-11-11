@@ -1,6 +1,8 @@
 import { computed, onBeforeUnmount, reactive, ref, type Ref } from "vue";
 import { useI18n } from "@/i18n/composables";
 import { chatApi, fileApi } from "@/api/v1";
+import { isNativeApp } from "@/composables/useServerAddress";
+import { nativeStreamRequest } from "@/api/nativeStream";
 import { fetchWithAuth } from "@/api/http";
 import type { Session } from "@/composables/useSessions";
 
@@ -775,7 +777,7 @@ export function useMessages(options: UseMessagesOptions) {
     }
   }
 
-  function startSseStream(
+  async function startSseStream(
     sessionId: string,
     messageId: string,
     parts: MessagePart[],
@@ -801,44 +803,52 @@ export function useMessages(options: UseMessagesOptions) {
     };
     activeConnections[messageId] = connection;
 
-    fetchWithAuth(chatApi.sendStreamUrl(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        session_id: sessionId,
-        message: parts.map(partToPayload),
-        flags: buildChatRequestFlags(enableStreaming, enableReasoning),
-        locale: locale.value,
-        selected_provider: selectedProvider,
-        selected_model: selectedModel,
-        _skip_user_history: skipUserHistory,
-        _llm_checkpoint_id: llmCheckpointId || undefined,
-      }),
-      signal: abort.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok || !response.body) {
-          throw new Error(`SSE connection failed: ${response.status}`);
-        }
-        await readSseStream(response.body, (payload) => {
-          processStreamPayload(botRecord, payload, userRecord, connection);
-          options.onStreamUpdate?.(sessionId);
+    // app 内走原生流式层（绕开混合内容拦截与 CapacitorHttp 缓冲）；网页端维持 fetch
+    const chatRequestBody = {
+      session_id: sessionId,
+      message: parts.map(partToPayload),
+      flags: buildChatRequestFlags(enableStreaming, enableReasoning),
+      locale: locale.value,
+      selected_provider: selectedProvider,
+      selected_model: selectedModel,
+      _skip_user_history: skipUserHistory,
+      _llm_checkpoint_id: llmCheckpointId || undefined,
+    };
+    const response = isNativeApp()
+      ? await nativeStreamRequest("/api/v1/chat", {
+          method: "POST",
+          jsonBody: chatRequestBody,
+          headers: { "Content-Type": "application/json" },
+          signal: abort.signal,
+        })
+      : await fetchWithAuth(chatApi.sendStreamUrl(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(chatRequestBody),
+          signal: abort.signal,
         });
-      })
-      .catch((error) => {
-        if (abort.signal.aborted) return;
+    try {
+      if (!response.ok || !response.body) {
+        throw new Error(`SSE connection failed: ${response.status}`);
+      }
+      await readSseStream(response.body, (payload) => {
+        processStreamPayload(botRecord, payload, userRecord, connection);
+        options.onStreamUpdate?.(sessionId);
+      });
+    } catch (error) {
+      if (!abort.signal.aborted) {
         ensureBotRecordVisible(connection);
         appendPlain(botRecord, `\n\n${String(error?.message || error)}`);
         console.error("SSE chat failed:", error);
-      })
-      .finally(async () => {
-        if (activeConnections[messageId]?.abort === abort) {
-          delete activeConnections[messageId];
-          await options.onSessionsChanged?.();
-        }
-      });
+      }
+    } finally {
+      if (activeConnections[messageId]?.abort === abort) {
+        delete activeConnections[messageId];
+        await options.onSessionsChanged?.();
+      }
+    }
   }
 
   function startResumeStream(
@@ -869,14 +879,21 @@ export function useMessages(options: UseMessagesOptions) {
       ) {
         let retryable = true;
         try {
-          const response = await fetchWithAuth(
-            chatApi.resumeRunStreamUrl(runId),
-            {
-              headers: { Accept: "text/event-stream" },
-              signal: abort.signal,
-            },
-          );
-          const contentType = response.headers.get("content-type") || "";
+          const response = isNativeApp()
+            ? await nativeStreamRequest(`/api/v1/chat/runs/${encodeURIComponent(runId)}/stream`, {
+                headers: { Accept: "text/event-stream" },
+                signal: abort.signal,
+              })
+            : await fetchWithAuth(
+                chatApi.resumeRunStreamUrl(runId),
+                {
+                  headers: { Accept: "text/event-stream" },
+                  signal: abort.signal,
+                },
+              );
+          const contentType = isNativeApp()
+            ? "text/event-stream"
+            : response.headers.get("content-type") || "";
           if (
             !response.ok ||
             !response.body ||

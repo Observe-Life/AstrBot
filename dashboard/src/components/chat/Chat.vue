@@ -1408,9 +1408,8 @@ const activeSessionPagination = computed(() =>
   currSessionId.value ? paginationBySession[currSessionId.value] : undefined,
 );
 
-// app 壳内：CapacitorHttp 原生拦截层不支持 SSE 流式响应，对话必须走 WebSocket
+// app 内对话传输默认 SSE：由原生流式层（capacitor-stream-http）承载，稳定可靠
 const transportMode = ref<TransportMode>(
-  isNativeApp() ||
   (localStorage.getItem("chat.transportMode") as TransportMode) === "websocket"
     ? "websocket"
     : "sse",
