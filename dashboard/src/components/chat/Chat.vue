@@ -454,7 +454,7 @@
             :key="lang.value"
             type="button"
             class="settings-row"
-            @click="switchLanguage(lang.value)"
+            @click="switchLanguage(lang.value as Locale)"
           >
             <span class="settings-name">{{ lang.flag }} {{ lang.label }}</span>
             <Check
@@ -699,6 +699,7 @@ import { chatApi, conversationApi, providerApi } from "@/api/v1";
 import { webuiExtApi } from "@/api/webuiExt";
 import ChatSettingsDialog from "@/components/chat/ChatSettingsDialog.vue";
 import ChatToolbarContext from "@/components/chat/ChatToolbarContext.vue";
+import type { Locale } from "@/i18n/types";
 import ProjectDialog, {
   type ProjectFormData,
 } from "@/components/chat/ProjectDialog.vue";
