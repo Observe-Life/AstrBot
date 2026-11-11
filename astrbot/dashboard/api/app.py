@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
@@ -100,22 +99,6 @@ def create_dashboard_asgi_app(
     # Compress JS/CSS and other sizable responses; Starlette's GZipMiddleware
     # skips text/event-stream, so SSE endpoints are unaffected.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
-    # 安卓壳（Capacitor）内页面运行在本地源上，访问本服务属于跨源请求。
-    # 认证走 Authorization 头（无 cookie），因此不需要 credentials。
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost",
-            "https://localhost",
-            "capacitor://localhost",
-            "http://127.0.0.1",
-            "https://127.0.0.1",
-        ],
-        allow_methods=["*"],
-        allow_headers=["*"],
-        expose_headers=["*"],
-        max_age=86400,
-    )
     app.state.core_lifecycle = core_lifecycle
     app.state.db = db
     app.state.jwt_secret = jwt_secret
