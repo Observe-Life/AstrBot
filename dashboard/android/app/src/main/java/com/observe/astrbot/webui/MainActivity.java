@@ -23,6 +23,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 
@@ -95,6 +96,18 @@ public class MainActivity extends AppCompatActivity {
                 } catch (IOException | IllegalArgumentException ignored) {
                 }
             }
+
+            /** 页面主题变化时同步系统栏图标明暗：dark -> 浅色图标，light -> 深色图标。 */
+            @JavascriptInterface
+            public void setWindowTheme(String mode) {
+                final boolean lightIcons = !"dark".equalsIgnoreCase(mode);
+                runOnUiThread(() -> {
+                    WindowInsetsControllerCompat ctl =
+                            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+                    ctl.setAppearanceLightStatusBars(lightIcons);
+                    ctl.setAppearanceLightNavigationBars(lightIcons);
+                });
+            }
         }, "androidBridge");
 
         webView.setWebViewClient(new WebViewClient() {
@@ -156,6 +169,14 @@ public class MainActivity extends AppCompatActivity {
          *     既避免双重留白，也避免键盘收起后残留 ghost padding；
          *  3) 用 enableEdgeToEdge 统一各 API 级别的系统栏透明与图标明暗。 */
         WindowCompat.enableEdgeToEdge(getWindow());
+        /* 系统栏图标明暗由应用自己设定：WindowCompat.enableEdgeToEdge 只做窗口透明、
+         * 刘海布局与对比度关闭，不设置图标明暗；Android 15+ 起系统也不再从状态栏
+         * 颜色推导图标颜色（Google 已标记为预期行为）。页面初始为白底，故默认深色
+         * 图标；页面切到深色主题时由 androidBridge.setWindowTheme 回调纠正。 */
+        WindowInsetsControllerCompat barIcons =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        barIcons.setAppearanceLightStatusBars(true);
+        barIcons.setAppearanceLightNavigationBars(true);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFFFFFFFF);
         root.addView(webView, new FrameLayout.LayoutParams(

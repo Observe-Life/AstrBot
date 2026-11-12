@@ -65,9 +65,12 @@ function setupThemeSync(pinia: ReturnType<typeof createPinia>) {
     // 5. Sync the desktop window's appearance with the app theme, so the native
     //    vibrancy material matches the sidebar/header in both light and dark mode.
     const syncDesktopWindowTheme = () => {
+      const mode = customizer.uiTheme === 'PurpleThemeDark' ? 'dark' : 'light';
       const setWindowTheme = window.astrbotDesktop?.setWindowTheme;
-      if (typeof setWindowTheme !== 'function') return;
-      setWindowTheme(customizer.uiTheme === 'PurpleThemeDark' ? 'dark' : 'light');
+      if (typeof setWindowTheme === 'function') setWindowTheme(mode);
+      // 安卓极简壳：状态栏/导航栏图标明暗必须跟随页面实际主题，
+      // 原生侧不自行推断（WindowCompat.enableEdgeToEdge 不设置图标明暗）。
+      window.androidBridge?.setWindowTheme?.(mode);
     };
     syncDesktopWindowTheme();
     watch(() => customizer.uiTheme, syncDesktopWindowTheme);

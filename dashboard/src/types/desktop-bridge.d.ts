@@ -29,6 +29,11 @@ declare global {
 
   interface Window {
     astrbotAppUpdater?: AstrBotAppUpdaterBridge;
+    /** 安卓极简壳注入的 JS 桥（无壳时为 undefined）。 */
+    androidBridge?: {
+      saveBase64?: (name: string, base64: string, mime: string) => void;
+      setWindowTheme?: (theme: 'dark' | 'light') => void;
+    };
     astrbotDesktop?: {
       isDesktop: boolean;
       isDesktopRuntime: () => Promise<boolean>;
