@@ -28,12 +28,10 @@ function mediaKey(part: MediaPart): string {
 
 async function loadBlob(key: string, url: string) {
   const target = resolveApiUrl(url);
-  console.log("[DEBUG-media] load", { key: key.slice(0, 40), raw: url, resolved: target, serverUrl: localStorage.getItem("server.url") });
   try {
     const response = await axios.get(target, {
       responseType: "blob",
     });
-    console.log("[DEBUG-media] resp", { status: response.status, ctype: response.headers?.["content-type"], isBlob: response.data instanceof Blob, size: response.data?.size ?? String(response.data).length });
     const data = response.data;
     const blob =
       data instanceof Blob
@@ -43,8 +41,22 @@ async function loadBlob(key: string, url: string) {
           });
     blobSrc[key] = URL.createObjectURL(blob);
   } catch (error) {
-    /* 拉取失败时退回原地址：网页端无影响，壳内至少能显示错误占位 */
-    console.error("[chatMedia] 媒体加载失败:", error);
+    const err = error as {
+      config?: { url?: string; baseURL?: string };
+      response?: { status?: number; data?: unknown };
+    };
+    console.error(
+      "[DEBUG-media] fail " +
+        JSON.stringify({
+          raw: url,
+          resolved: target,
+          serverUrl: localStorage.getItem("server.url"),
+          reqUrl: err?.config?.url,
+          reqBase: err?.config?.baseURL,
+          status: err?.response?.status,
+          body: String(err?.response?.data).slice(0, 160),
+        }),
+    );
     blobSrc[key] = url;
   } finally {
     inflight.delete(key);
