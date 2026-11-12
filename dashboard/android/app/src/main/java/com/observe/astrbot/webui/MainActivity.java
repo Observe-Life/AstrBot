@@ -111,7 +111,7 @@ public class MainActivity extends AppCompatActivity {
         // 注入先于任何页面脚本（官方 API，避免 onPageStarted 竞态）
         WebViewCompat.addDocumentStartJavaScript(
                 webView, PRELOAD_JS,
-                java.util.Collections.singletonList("https://appassets.androidplatform.net"));
+                java.util.Collections.singleton("https://appassets.androidplatform.net"));
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
