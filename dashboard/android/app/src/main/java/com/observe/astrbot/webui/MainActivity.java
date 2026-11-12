@@ -149,9 +149,13 @@ public class MainActivity extends AppCompatActivity {
         });
 
         /* 状态栏/刘海/键盘避让（targetSdk 36：Android 15+ 强制 edge-to-edge）。
-         * 标准做法：根容器承接 WindowInsets，按 systemBars/displayCutout/ime
-         * 的实际高度给内容加内边距；不做任何平台范围变更。 */
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+         * 依据 Android 官方《Make WebViews edge-to-edge》与《Understand window
+         * insets in WebView》：
+         *  1) padding 加在 WebView 的父容器上——加在 WebView 自身会被忽略；
+         *  2) 已用于 padding 的维度必须"归零"后继续下发（zeroing 方案），
+         *     既避免双重留白，也避免键盘收起后残留 ghost padding；
+         *  3) 用 enableEdgeToEdge 统一各 API 级别的系统栏透明与图标明暗。 */
+        WindowCompat.enableEdgeToEdge(getWindow());
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFFFFFFFF);
         root.addView(webView, new FrameLayout.LayoutParams(
@@ -164,7 +168,11 @@ public class MainActivity extends AppCompatActivity {
             int top = Math.max(bars.top, cutout.top);
             int bottom = Math.max(bars.bottom, ime.bottom);
             v.setPadding(cutout.left, top, cutout.right, bottom);
-            return WindowInsetsCompat.CONSUMED;
+            return new WindowInsetsCompat.Builder(insets)
+                    .setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
+                    .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
+                    .setInsets(WindowInsetsCompat.Type.ime(), Insets.NONE)
+                    .build();
         });
         setContentView(root);
 
