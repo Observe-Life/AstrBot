@@ -106,12 +106,13 @@ public class MainActivity extends AppCompatActivity {
             @JavascriptInterface
             public void setWindowTheme(String mode, String backgroundColor) {
                 final boolean lightIcons = !"dark".equalsIgnoreCase(mode);
-                final int bg;
+                int parsedBg;
                 try {
-                    bg = android.graphics.Color.parseColor(backgroundColor);
+                    parsedBg = android.graphics.Color.parseColor(backgroundColor);
                 } catch (Exception e) {
-                    bg = lightIcons ? 0xFFFFFFFF : 0xFF121212;
+                    parsedBg = lightIcons ? 0xFFFFFFFF : 0xFF121212;
                 }
+                final int bg = parsedBg;
                 runOnUiThread(() -> {
                     WindowInsetsControllerCompat ctl =
                             WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
