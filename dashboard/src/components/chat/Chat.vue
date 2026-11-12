@@ -1059,6 +1059,41 @@ const tabAnimClass = computed(() =>
       : "",
 );
 
+/* 原生返回键钩子：壳内的返回手势会先问这里"页面是否消费本次返回"。
+ * 返回 "consumed" = 已在页面内处理（关闭思考详情页/浮层/回退路由），壳不再动作；
+ * 返回 "root" = 停在根页，壳执行"双击退出"。 */
+function installNativeBackHandler() {
+  if (!isNativeApp()) return;
+  (window as unknown as { __onNativeBack?: () => string }).__onNativeBack = () => {
+    if (threadPanelOpen.value) {
+      threadPanelOpen.value = false;
+      return "consumed";
+    }
+    if (threadSelection.visible) {
+      threadSelection.visible = false;
+      return "consumed";
+    }
+    if (sheetSession.value) {
+      sheetSession.value = null;
+      return "consumed";
+    }
+    if (settingsSub.value) {
+      settingsSub.value = null;
+      return "consumed";
+    }
+    const rootTabs = ["/list", "/session", "/extend", "/settings", "/chatbox"];
+    const hashPath = location.hash.replace(/^#/, "") || "/";
+    const firstSegment = "/" + (hashPath.split("?")[0].split("/")[1] || "");
+    if (!rootTabs.includes(firstSegment)) {
+      window.history.back();
+      return "consumed";
+    }
+    return "root";
+  };
+}
+
+installNativeBackHandler();
+
 /* 点击标签栏按钮时给一次轻微振动；滑动切换不振动 */
 function onTabClick(tab: ChatTab) {
   try {
