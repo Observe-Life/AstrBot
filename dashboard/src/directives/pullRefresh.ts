@@ -105,6 +105,7 @@ async function runRefresh(el: HTMLElement, state: PullState) {
 }
 
 function handleTouchStart(el: HTMLElement, state: PullState, event: TouchEvent) {
+  console.log("[DEBUG-pr] touchstart target=", (event.target as HTMLElement)?.className?.slice?.(0, 30), "scrollTop=", el.scrollTop);
   if (state.refreshing) return;
   if (el.scrollTop > 0) {
     state.tracking = false;
@@ -116,6 +117,7 @@ function handleTouchStart(el: HTMLElement, state: PullState, event: TouchEvent) 
 }
 
 function handleTouchMove(el: HTMLElement, state: PullState, event: TouchEvent) {
+  console.log("[DEBUG-pr] touchmove tracking=", state.tracking, "scrollTop=", el.scrollTop, "dy=", Math.round(event.touches[0]?.clientY || 0) - state.startY);
   if (!state.tracking || state.refreshing) return;
   const dy = event.touches[0].clientY - state.startY;
   if (dy <= 0 || el.scrollTop > 0) {
@@ -133,6 +135,7 @@ function handleTouchMove(el: HTMLElement, state: PullState, event: TouchEvent) {
 }
 
 function handleTouchEnd(el: HTMLElement, state: PullState) {
+  console.log("[DEBUG-pr] touchend tracking=", state.tracking, "pull=", Math.round(state.pull));
   if (!state.tracking) return;
   state.tracking = false;
   if (state.pull >= THRESHOLD) {
@@ -157,6 +160,7 @@ export const pullRefresh: Directive<HTMLElement, () => unknown> = {
       el,
     };
     states.set(el, state);
+    console.log("[DEBUG-pr] mounted on", el.className, "scrollTop=", el.scrollTop);
     (el as HTMLElement & { __pullRefreshHandler?: () => unknown })
       .__pullRefreshHandler = binding.value;
 
