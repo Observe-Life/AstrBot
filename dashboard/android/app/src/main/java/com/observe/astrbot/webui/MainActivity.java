@@ -21,6 +21,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewAssetLoader;
@@ -156,6 +157,11 @@ public class MainActivity extends AppCompatActivity {
          *     既避免双重留白，也避免键盘收起后残留 ghost padding；
          *  3) 用 enableEdgeToEdge 统一各 API 级别的系统栏透明与图标明暗。 */
         WindowCompat.enableEdgeToEdge(getWindow());
+        /* 页面底色恒为白：强制系统栏用深色图标，避免深色主题下图标变白隐形 */
+        WindowInsetsControllerCompat barCtl =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        barCtl.setAppearanceLightStatusBars(true);
+        barCtl.setAppearanceLightNavigationBars(true);
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(0xFFFFFFFF);
         root.addView(webView, new FrameLayout.LayoutParams(
