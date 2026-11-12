@@ -1,4 +1,4 @@
-name: Android App (Capacitor 打包)
+name: Android App (极简 WebView 壳)
 
 # 独立流水线：只为安卓 APK 服务，不影响主构建。
 # 产物发布到滚动 Release customize-build（astrbot-webui-debug.apk）。
