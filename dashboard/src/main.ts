@@ -64,12 +64,11 @@ function setupThemeSync(pinia: ReturnType<typeof createPinia>) {
 
     // 5. Sync the desktop window's appearance with the app theme, so the native
     //    vibrancy material matches the sidebar/header in both light and dark mode.
-    const readPageBackgroundHex = (): string => {
-      const rgb = getComputedStyle(document.body).backgroundColor.match(/\d+/g);
-      if (!rgb || rgb.length < 3) return customizer.uiTheme === 'PurpleThemeDark' ? '#121212' : '#FFFFFF';
-      const [r, g, b] = rgb.map(Number);
-      return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-    };
+    // 页面真实底色以 Vuetify 主题定义为准：body 本身透明（背景画在 .v-application 上），
+    // 直接读 body 的计算值会把透明误判成黑色。
+    const readPageBackgroundHex = (): string =>
+      vuetify.theme.themes.value[customizer.uiTheme]?.colors?.background ??
+      (customizer.uiTheme === 'PurpleThemeDark' ? '#121212' : '#FFFFFF');
     const syncDesktopWindowTheme = () => {
       const mode = customizer.uiTheme === 'PurpleThemeDark' ? 'dark' : 'light';
       const setWindowTheme = window.astrbotDesktop?.setWindowTheme;
