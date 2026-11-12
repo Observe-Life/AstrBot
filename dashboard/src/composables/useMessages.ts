@@ -801,7 +801,7 @@ export function useMessages(options: UseMessagesOptions) {
     };
     activeConnections[messageId] = connection;
 
-    // app 内走原生流式层（绕开混合内容拦截与 CapacitorHttp 缓冲）；网页端维持 fetch
+    // 壳与网页端共用同一条 fetch 流式路径
     const chatRequestBody = {
       session_id: sessionId,
       message: parts.map(partToPayload),
