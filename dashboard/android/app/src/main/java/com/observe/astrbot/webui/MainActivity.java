@@ -18,9 +18,6 @@ import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 
@@ -146,18 +143,10 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        /* 状态栏避让：targetSdk 34 走系统传统窗口布局（内容区在系统栏之下），
+         * 不启用 Android 15+ 的强制 edge-to-edge，避免依赖 insets 派发。 */
         setContentView(webView);
 
-        /* 状态栏/导航栏避让：targetSdk 35+ 默认全屏绘制（edge-to-edge），
-         * 用 insets 给 WebView 加系统条高度内边距（含键盘：ime inset 出现时
-         * 内容被顶起，等效旧 adjustResize 行为）。 */
-        ViewCompat.setOnApplyWindowInsetsListener(webView, (v, insets) -> {
-            Insets bars = insets.getInsets(
-                    WindowInsetsCompat.Type.systemBars()
-                            | WindowInsetsCompat.Type.ime());
-            v.setPadding(0, bars.top, 0, bars.bottom);
-            return WindowInsetsCompat.CONSUMED;
-        });
         webView.loadUrl("https://appassets.androidplatform.net" + START_PATH);
     }
 
