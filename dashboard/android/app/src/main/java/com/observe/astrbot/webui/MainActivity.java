@@ -65,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
+        // 页面源是 https 虚拟域，后端是内网 http：必须放行混合内容（局域网自用场景）
+        s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
 
