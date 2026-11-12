@@ -14,10 +14,15 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.webkit.WebViewAssetLoader;
 import androidx.webkit.WebViewCompat;
 
@@ -143,9 +148,25 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        /* 状态栏避让：targetSdk 34 走系统传统窗口布局（内容区在系统栏之下），
-         * 不启用 Android 15+ 的强制 edge-to-edge，避免依赖 insets 派发。 */
-        setContentView(webView);
+        /* 状态栏/刘海/键盘避让（targetSdk 36：Android 15+ 强制 edge-to-edge）。
+         * 标准做法：根容器承接 WindowInsets，按 systemBars/displayCutout/ime
+         * 的实际高度给内容加内边距；不做任何平台范围变更。 */
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFFFFFFFF);
+        root.addView(webView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            Insets cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout());
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            int top = Math.max(bars.top, cutout.top);
+            int bottom = Math.max(bars.bottom, ime.bottom);
+            v.setPadding(cutout.left, top, cutout.right, bottom);
+            return WindowInsetsCompat.CONSUMED;
+        });
+        setContentView(root);
 
         webView.loadUrl("https://appassets.androidplatform.net" + START_PATH);
     }
