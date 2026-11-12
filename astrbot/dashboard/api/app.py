@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from astrbot.core import DEMO_MODE, LogBroker
@@ -99,6 +100,21 @@ def create_dashboard_asgi_app(
     # Compress JS/CSS and other sizable responses; Starlette's GZipMiddleware
     # skips text/event-stream, so SSE endpoints are unaffected.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # The Android WebView shell serves the dashboard from https://localhost
+    # (Capacitor 6+ default). With CapacitorHttp disabled its axios/fetch
+    # calls cross origins, so the shell origin must be allowed here.
+    # Added after GZip so CORS sits outermost and answers preflights itself.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://localhost",
+            "http://localhost",
+            "capacitor://localhost",
+        ],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["Authorization", "Content-Type", "Accept-Language"],
+    )
     app.state.core_lifecycle = core_lifecycle
     app.state.db = db
     app.state.jwt_secret = jwt_secret
