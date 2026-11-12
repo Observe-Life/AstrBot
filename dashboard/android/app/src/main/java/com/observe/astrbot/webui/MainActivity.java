@@ -113,14 +113,12 @@ public class MainActivity extends AppCompatActivity {
                     parsedBg = lightIcons ? 0xFFFFFFFF : 0xFF121212;
                 }
                 final int bg = parsedBg;
-                android.util.Log.d("DEBUG-a4f2", "setWindowTheme mode=" + mode + " bg=" + backgroundColor);
                 runOnUiThread(() -> {
                     WindowInsetsControllerCompat ctl =
                             WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
                     ctl.setAppearanceLightStatusBars(lightIcons);
                     ctl.setAppearanceLightNavigationBars(lightIcons);
                     if (rootContainer != null) rootContainer.setBackgroundColor(bg);
-                    android.util.Log.d("DEBUG-a4f2", "applied lightIcons=" + lightIcons + " bg=#" + Integer.toHexString(bg));
                 });
             }
         }, "androidBridge");
@@ -205,7 +203,6 @@ public class MainActivity extends AppCompatActivity {
             int top = Math.max(bars.top, cutout.top);
             int bottom = Math.max(bars.bottom, ime.bottom);
             v.setPadding(cutout.left, top, cutout.right, bottom);
-            android.util.Log.d("DEBUG-a4f2", "insets top=" + top + " bottom=" + bottom + " ime=" + ime.bottom);
             return new WindowInsetsCompat.Builder(insets)
                     .setInsets(WindowInsetsCompat.Type.systemBars(), Insets.NONE)
                     .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.NONE)
