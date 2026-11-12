@@ -37,8 +37,8 @@ function injectStyle() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.16);
@@ -51,8 +51,8 @@ function injectStyle() {
   opacity: 1;
 }
 .pull-refresh-spinner {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   border: 2px solid rgba(0, 0, 0, 0.12);
   border-top-color: rgba(0, 0, 0, 0.5);
   border-radius: 50%;
@@ -78,9 +78,9 @@ function createIndicator(): { wrap: HTMLElement; spinner: HTMLElement } {
   return { wrap, spinner };
 }
 
-function positionIndicator(state: PullState, visible: boolean) {
+function positionIndicator(state: PullState, visible: boolean, pull = 0) {
   const rect = state.el.getBoundingClientRect();
-  const y = Math.max(16, rect.top + 18);
+  const y = Math.max(16, rect.top + 14 + Math.min(pull, 48));
   state.indicator.style.top = `${y}px`;
   state.indicator.classList.toggle("is-visible", visible);
 }
@@ -91,7 +91,7 @@ async function runRefresh(el: HTMLElement, state: PullState) {
   if (!handler) return;
   state.refreshing = true;
   state.indicator.classList.add("is-loading");
-  positionIndicator(state, true);
+  positionIndicator(state, true, THRESHOLD);
   try {
     await handler();
   } catch (error) {
@@ -100,8 +100,6 @@ async function runRefresh(el: HTMLElement, state: PullState) {
     state.refreshing = false;
     state.indicator.classList.remove("is-loading");
     state.indicator.classList.remove("is-visible");
-    el.style.transition = "transform 0.22s ease";
-    el.style.transform = "";
     state.pull = 0;
   }
 }
@@ -124,29 +122,24 @@ function handleTouchMove(el: HTMLElement, state: PullState, event: TouchEvent) {
     state.tracking = dy <= 0 ? state.tracking : false;
     if (state.pull > 0) {
       state.pull = 0;
-      el.style.transition = "transform 0.2s ease";
-      el.style.transform = "";
+      positionIndicator(state, false);
     }
     return;
   }
+  /* 界面本身不动（阻止滚动），只让悬浮图标随下拉位移 */
   if (event.cancelable) event.preventDefault();
   state.pull = Math.min(MAX_PULL, dy * DAMPING);
-  el.style.transition = "none";
-  el.style.transform = `translateY(${state.pull}px)`;
-  positionIndicator(state, state.pull > 4);
+  positionIndicator(state, state.pull > 4, state.pull);
 }
 
 function handleTouchEnd(el: HTMLElement, state: PullState) {
   if (!state.tracking) return;
   state.tracking = false;
   if (state.pull >= THRESHOLD) {
-    el.style.transition = "transform 0.22s ease";
-    el.style.transform = `translateY(${THRESHOLD * 0.5}px)`;
     void runRefresh(el, state);
   } else {
     state.pull = 0;
-    el.style.transition = "transform 0.22s ease";
-    el.style.transform = "";
+    positionIndicator(state, false);
   }
 }
 

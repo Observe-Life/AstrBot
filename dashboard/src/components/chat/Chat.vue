@@ -983,7 +983,10 @@ if (window.visualViewport) {
     /* 键盘开启判定：overlay 模式下 inset>0；压缩模式下视口明显矮于基线（竖屏） */
     /* 竖屏判定必须用物理屏幕方向：键盘压缩后 innerHeight 已小于 innerWidth */
     const isPortrait = window.screen.height > window.screen.width;
-    const keyboardOpen = kb > 0 || (isPortrait && vv.height < viewportBaseline - 120);
+    /* 只在原生壳内隐藏标签栏；网页端手机视图保持原行为（标签栏贴键盘顶） */
+    const keyboardOpen =
+      isNativeApp() &&
+      (kb > 0 || (isPortrait && vv.height < viewportBaseline - 120));
     document.documentElement.classList.toggle("kb-open", keyboardOpen);
     document.documentElement.style.setProperty(
       "--chat-kb-inset",
@@ -1552,6 +1555,11 @@ function openSessionSheet(session: Session) {
   /* 长按时浏览器可能残留文字选区（会露出一截选择手柄），这里主动清掉 */
   window.getSelection()?.removeAllRanges();
   document.getSelection()?.removeAllRanges();
+  try {
+    navigator.vibrate?.(12);
+  } catch {
+    /* 部分浏览器不支持振动，忽略 */
+  }
   sheetSession.value = session;
 }
 
@@ -2299,7 +2307,9 @@ async function deleteSidebarSession(session: Session) {
 
   const wasCurrent = currSessionId.value === session.session_id;
   await deleteSession(session.session_id);
-  if (wasCurrent) {
+  /* 仅当"正在聊天视图里删除当前活跃会话"才切换到新会话防界面悬空；
+   * 在列表页删除（哪怕删的是活跃会话）一律停留列表页 */
+  if (wasCurrent && activeTab.value === "chat") {
     selectedProjectId.value = null;
     await router.push(basePath());
   }
