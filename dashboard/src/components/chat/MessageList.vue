@@ -277,6 +277,7 @@ import {
   registerChatMarkdownComponents,
 } from "@/components/chat/chatMarkdownComponents";
 import { fileApi } from "@/api/v1";
+import { mediaDisplayUrl } from "@/utils/chatMedia";
 import IPythonToolBlock from "@/components/chat/message_list_comps/IPythonToolBlock.vue";
 import MarkdownMessagePart from "@/components/chat/message_list_comps/MarkdownMessagePart.vue";
 import ReasoningBlock from "@/components/chat/message_list_comps/ReasoningBlock.vue";
@@ -361,7 +362,7 @@ function hasFollowingContentBlock(message: ChatRecord, blockIndex: number) {
     .some((block) => block.kind === "content");
 }
 
-function partUrl(part: MessagePart) {
+function rawPartUrl(part: MessagePart) {
   if (part.embedded_url) return part.embedded_url;
   if (part.embedded_file?.url) return part.embedded_file.url;
   if (part.attachment_id) {
@@ -372,6 +373,11 @@ function partUrl(part: MessagePart) {
     return fileApi.byNameUrl(lookupFilename);
   }
   return "";
+}
+
+/* 壳内相对地址带不了鉴权，统一交给 chatMedia 转 blob；网页端原样返回 */
+function partUrl(part: MessagePart) {
+  return mediaDisplayUrl(part, rawPartUrl(part));
 }
 
 function formatJson(value: unknown) {

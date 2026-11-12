@@ -223,6 +223,7 @@ import {
   watch,
 } from "vue";
 import { chatApi, configRouteApi, fileApi } from "@/api/v1";
+import { mediaDisplayUrl } from "@/utils/chatMedia";
 import ChatSettingsDialog from "@/components/chat/ChatSettingsDialog.vue";
 import ChatInput from "@/components/chat/ChatInput.vue";
 import { useDragUpload } from "@/composables/useDragUpload";
@@ -466,13 +467,18 @@ function messageRefs(message: ChatRecord) {
   return null;
 }
 
-function partUrl(part: MessagePart) {
+function rawPartUrl(part: MessagePart) {
   if (part.embedded_url) return part.embedded_url;
   if (part.embedded_file?.url) return part.embedded_file.url;
   if (part.attachment_id) return fileApi.contentUrl(part.attachment_id);
   const lookupFilename = part.stored_filename || part.filename;
   if (lookupFilename) return fileApi.byNameUrl(lookupFilename);
   return "";
+}
+
+/* 壳内相对地址带不了鉴权，统一交给 chatMedia 转 blob；网页端原样返回 */
+function partUrl(part: MessagePart) {
+  return mediaDisplayUrl(part, rawPartUrl(part));
 }
 
 function normalizeToolCall(tool: Record<string, unknown>) {
