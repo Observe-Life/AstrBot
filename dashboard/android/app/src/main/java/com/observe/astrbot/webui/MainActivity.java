@@ -47,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQ_FILE_CHOOSER = 9101;
 
     private WebView webView;
+    private FrameLayout rootContainer;
     private ValueCallback<Uri[]> pendingFileChooser;
     private long lastBackAt = 0L;
 
@@ -97,15 +98,26 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
 
-            /** 页面主题变化时同步系统栏图标明暗：dark -> 浅色图标，light -> 深色图标。 */
+            /**
+             * 页面主题变化时同步窗口外观：
+             * - 图标明暗：dark 页面 -> 浅色图标，light 页面 -> 深色图标；
+             * - 容器底色：与页面实际底色一致，避免系统栏 padding 区域露出异色条。
+             */
             @JavascriptInterface
-            public void setWindowTheme(String mode) {
+            public void setWindowTheme(String mode, String backgroundColor) {
                 final boolean lightIcons = !"dark".equalsIgnoreCase(mode);
+                final int bg;
+                try {
+                    bg = android.graphics.Color.parseColor(backgroundColor);
+                } catch (Exception e) {
+                    bg = lightIcons ? 0xFFFFFFFF : 0xFF121212;
+                }
                 runOnUiThread(() -> {
                     WindowInsetsControllerCompat ctl =
                             WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
                     ctl.setAppearanceLightStatusBars(lightIcons);
                     ctl.setAppearanceLightNavigationBars(lightIcons);
+                    if (rootContainer != null) rootContainer.setBackgroundColor(bg);
                 });
             }
         }, "androidBridge");
@@ -178,6 +190,7 @@ public class MainActivity extends AppCompatActivity {
         barIcons.setAppearanceLightStatusBars(true);
         barIcons.setAppearanceLightNavigationBars(true);
         FrameLayout root = new FrameLayout(this);
+        rootContainer = root;
         root.setBackgroundColor(0xFFFFFFFF);
         root.addView(webView, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
