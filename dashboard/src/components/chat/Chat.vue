@@ -1065,8 +1065,24 @@ const tabAnimClass = computed(() =>
 function installNativeBackHandler() {
   if (!isNativeApp()) return;
   (window as unknown as { __onNativeBack?: () => string }).__onNativeBack = () => {
+    /* 思考详情页（最优先：用户最常误触返回） */
+    if (reasoningPanelOpen.value) {
+      reasoningPanelOpen.value = false;
+      return "consumed";
+    }
+    /* 线程详情页 */
     if (threadPanelOpen.value) {
       threadPanelOpen.value = false;
+      return "consumed";
+    }
+    /* 引用侧栏 */
+    if (refsSidebarOpen.value) {
+      refsSidebarOpen.value = false;
+      return "consumed";
+    }
+    /* 工作表文件面板 */
+    if (chatHeader.workspaceFilesOpen) {
+      chatHeader.workspaceFilesOpen = false;
       return "consumed";
     }
     if (threadSelection.visible) {

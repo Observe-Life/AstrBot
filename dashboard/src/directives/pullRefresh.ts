@@ -92,6 +92,8 @@ async function runRefresh(el: HTMLElement, state: PullState) {
   state.refreshing = true;
   state.indicator.classList.add("is-loading");
   positionIndicator(state, true, THRESHOLD);
+  /* 整页重载太快时转圈几乎不可见，留出一小段可见的 loading 时长 */
+  await new Promise((resolve) => setTimeout(resolve, 300));
   try {
     await handler();
   } catch (error) {
@@ -105,7 +107,6 @@ async function runRefresh(el: HTMLElement, state: PullState) {
 }
 
 function handleTouchStart(el: HTMLElement, state: PullState, event: TouchEvent) {
-  console.log("[DEBUG-pr2] start |target=", (event.target as HTMLElement)?.className?.slice?.(0, 40), "|scrollTop=", el.scrollTop);
   if (state.refreshing) return;
   if (el.scrollTop > 0) {
     state.tracking = false;
@@ -134,7 +135,6 @@ function handleTouchMove(el: HTMLElement, state: PullState, event: TouchEvent) {
 }
 
 function handleTouchEnd(el: HTMLElement, state: PullState) {
-  console.log("[DEBUG-pr2] end |tracking=", state.tracking, "|pull=", Math.round(state.pull));
   if (!state.tracking) return;
   state.tracking = false;
   if (state.pull >= THRESHOLD) {
@@ -159,7 +159,6 @@ export const pullRefresh: Directive<HTMLElement, () => unknown> = {
       el,
     };
     states.set(el, state);
-    console.log("[DEBUG-pr2] mounted |class=", el.className, "|connected=", el.isConnected);
     (el as HTMLElement & { __pullRefreshHandler?: () => unknown })
       .__pullRefreshHandler = binding.value;
 
