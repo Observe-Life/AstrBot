@@ -110,6 +110,7 @@ def create_dashboard_asgi_app(
             "https://localhost",
             "http://localhost",
             "capacitor://localhost",
+            "https://appassets.androidplatform.net",
         ],
         allow_credentials=False,
         allow_methods=["*"],

@@ -801,7 +801,7 @@ import RefsSidebar from "@/components/chat/message_list_comps/RefsSidebar.vue";
 import {
   ensureDefaultServerUrl,
   getServerUrl,
-  isNativeApp,
+  isShellApp,
   setServerUrl,
 } from "@/composables/useServerAddress";
 import { useThinScrollbar } from "@/composables/useThinScrollbar";
@@ -985,7 +985,7 @@ if (window.visualViewport) {
     const isPortrait = window.screen.height > window.screen.width;
     /* 只在原生壳内隐藏标签栏；网页端手机视图保持原行为（标签栏贴键盘顶） */
     const keyboardOpen =
-      isNativeApp() &&
+      isShellApp() &&
       (kb > 0 || (isPortrait && vv.height < viewportBaseline - 120));
     document.documentElement.classList.toggle("kb-open", keyboardOpen);
     document.documentElement.style.setProperty(
@@ -1063,7 +1063,7 @@ const tabAnimClass = computed(() =>
  * 返回 "consumed" = 已在页面内处理（关闭思考详情页/浮层/回退路由），壳不再动作；
  * 返回 "root" = 停在根页，壳执行"双击退出"。 */
 function installNativeBackHandler() {
-  if (!isNativeApp()) return;
+  if (!isShellApp()) return;
   (window as unknown as { __onNativeBack?: () => string }).__onNativeBack = () => {
     /* 思考详情页（最优先：用户最常误触返回） */
     if (reasoningPanelOpen.value) {
@@ -1475,7 +1475,7 @@ const activeSessionPagination = computed(() =>
   currSessionId.value ? paginationBySession[currSessionId.value] : undefined,
 );
 
-// app 内对话传输默认 SSE：由原生流式层（capacitor-stream-http）承载，稳定可靠
+// app 内对话传输默认 SSE：与网页端共用同一条 fetch 流式路径
 const transportMode = ref<TransportMode>(
   (localStorage.getItem("chat.transportMode") as TransportMode) === "websocket"
     ? "websocket"

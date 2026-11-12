@@ -1,8 +1,6 @@
 import { computed, onBeforeUnmount, reactive, ref, type Ref } from "vue";
 import { useI18n } from "@/i18n/composables";
 import { chatApi, fileApi } from "@/api/v1";
-import { isNativeApp } from "@/composables/useServerAddress";
-import { nativeStreamRequest, type NativeStreamResponse } from "@/api/nativeStream";
 import { fetchWithAuth } from "@/api/http";
 import type { Session } from "@/composables/useSessions";
 
@@ -814,20 +812,13 @@ export function useMessages(options: UseMessagesOptions) {
       _skip_user_history: skipUserHistory,
       _llm_checkpoint_id: llmCheckpointId || undefined,
     };
-    const response = isNativeApp()
-      ? await nativeStreamRequest("/api/v1/chat", {
-          method: "POST",
-          jsonBody: chatRequestBody,
-          headers: { "Content-Type": "application/json" },
-          signal: abort.signal,
-        })
-      : await fetchWithAuth(chatApi.sendStreamUrl(), {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(chatRequestBody),
-          signal: abort.signal,
+    const response = await fetchWithAuth(chatApi.sendStreamUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(chatRequestBody),
+      signal: abort.signal,
         });
     try {
       if (!response.ok || !response.body) {
@@ -879,24 +870,14 @@ export function useMessages(options: UseMessagesOptions) {
       ) {
         let retryable = true;
         try {
-          let response: Response | NativeStreamResponse;
-          let contentType: string;
-          if (isNativeApp()) {
-            response = await nativeStreamRequest(
-              `/api/v1/chat/runs/${encodeURIComponent(runId)}/stream`,
-              {
-                headers: { Accept: "text/event-stream" },
-                signal: abort.signal,
-              },
-            );
-            contentType = "text/event-stream";
-          } else {
-            response = await fetchWithAuth(chatApi.resumeRunStreamUrl(runId), {
+          const response = await fetchWithAuth(
+            chatApi.resumeRunStreamUrl(runId),
+            {
               headers: { Accept: "text/event-stream" },
               signal: abort.signal,
-            });
-            contentType = response.headers.get("content-type") || "";
-          }
+            },
+          );
+          const contentType = response.headers.get("content-type") || "";
           if (
             !response.ok ||
             !response.body ||

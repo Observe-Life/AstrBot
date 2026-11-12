@@ -1,13 +1,10 @@
-name: Android App (Capacitor 打包)
+name: Android App (极简 WebView 壳)
 
 # 独立流水线：只为安卓 APK 服务，不影响主构建。
 # 产物发布到滚动 Release customize-build（astrbot-webui-debug.apk）。
-# 说明：
-# - 安卓壳工程源码在 dashboard/android/（进仓库）：
-#   改 APP 名字、图标、原生功能，直接改壳工程源码文件，推送后出新包；
-# - 首次运行自举两件事（都是自动提交，仅发生一次）：
-#   a) Capacitor 依赖写进 dashboard/package.json 与 pnpm-lock.yaml；
-#   b) 壳工程不存在时用 npx cap add android 生成并提交 dashboard/android/。
+# 壳工程 dashboard/android/ 是极简 WebView 工程（无 Capacitor）：
+# - 前端产物 dist/ 由本流水线拷入 android/app/src/main/assets/；
+# - 前端改动只需要重新部署服务器，不必出新包；壳改动才需要重跑本流水线。
 
 on:
   workflow_dispatch:
@@ -35,7 +32,7 @@ jobs:
           ref: ${{ inputs.ref || '4.29.0-customize' }}
           fetch-depth: 0
 
-      - name: 安装 Java 21（安卓构建，Capacitor 8 要求）
+      - name: 安装 Java 21（安卓构建）
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -53,18 +50,6 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: dashboard/pnpm-lock.yaml
 
-      - name: 依赖自举（首次运行把 Capacitor 写进 package.json 与 lockfile）
-        working-directory: dashboard
-        run: |
-          if ! grep -q '@capacitor/core' pnpm-lock.yaml; then
-            pnpm add -D @capacitor/core @capacitor/cli @capacitor/android
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package.json pnpm-lock.yaml
-            git commit -m "build(android): 依赖自举 Capacitor（安卓流水线自动提交）"
-            git push
-          fi
-
       - name: 安装依赖
         working-directory: dashboard
         run: pnpm install --frozen-lockfile
@@ -73,27 +58,13 @@ jobs:
         working-directory: dashboard
         run: pnpm run build
 
-      - name: 壳工程（存在即用仓库源码；首次生成并提交入库）
+      - name: 前端产物拷入壳 assets
         working-directory: dashboard
         run: |
-          BOOTSTRAPPED=0
-          if [ ! -d android ]; then
-            npx --yes cap add android
-            BOOTSTRAPPED=1
-          fi
-          # 内网地址是 http 明文（REST 与 ws），必须允许明文流量
-          grep -q usesCleartextTraffic android/app/src/main/AndroidManifest.xml || \
-            sed -i 's|<application|<application android:usesCleartextTraffic="true"|' \
-              android/app/src/main/AndroidManifest.xml
-          grep -q usesCleartextTraffic android/app/src/main/AndroidManifest.xml
-          if [ "$BOOTSTRAPPED" = "1" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add android
-            git commit -m "build(android): 壳工程入库（Capacitor 自动生成，后续改名/图标/功能直接改这里）"
-            git push
-            echo "壳工程已提交入库"
-          fi
+          rm -rf android/app/src/main/assets
+          mkdir -p android/app/src/main/assets
+          cp -r dist/* android/app/src/main/assets/
+          ls android/app/src/main/assets | head
 
       - name: 固定调试签名（首次生成 keystore 并提交入库）
         working-directory: dashboard
@@ -111,18 +82,9 @@ jobs:
             echo "固定签名 keystore 已提交入库"
           fi
 
-      - name: 同步前端产物
-        working-directory: dashboard
-        run: npx --yes cap sync android
-
-      - name: 打包 APK（64 位）
+      - name: 打包 APK
         working-directory: dashboard/android
         run: |
-          # 只保留 64 位（arm64-v8a）
-          grep -q "arm64-v8a" app/build.gradle || sed -i \
-            's|defaultConfig {|defaultConfig {\n        ndk { abiFilters "arm64-v8a" }|' \
-            app/build.gradle
-          grep -q "arm64-v8a" app/build.gradle
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 

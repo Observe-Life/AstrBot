@@ -1,18 +1,17 @@
 /*
- * 服务器地址管理（安卓壳专用能力）。
+ * 服务器地址管理（连接服务器的本体逻辑，网页端与壳共用同一实现）。
  *
- * - 填写 AstrBot 后端内网网址后，安卓壳（Capacitor 原生环境）里的所有
- *   HTTP / WebSocket 请求都指向它；原生层发请求不受浏览器同源策略限制。
- * - 浏览器开发模式（vite dev）没有原生层，数据仍由代理提供，地址仅作
- *   状态记录与展示，避免误以为发生了真实跨域直连。
+ * - 页面在壳内由 WebViewAssetLoader 伺服于固定虚拟源，后端地址由用户配置：
+ *   配置后所有 HTTP / WebSocket 请求都改写指向它（跨源，靠后端 CORS 放行）。
+ * - 浏览器直接访问后端自身时页面与 API 同源，改写等于改到同源，无副作用。
  */
 const STORAGE_KEY = "server.url";
 const DEFAULT_URL = "http://192.168.31.115:6185";
 
-export function isNativeApp(): boolean {
+/** 是否运行在 AstrBot 原生壳内（壳在页面脚本执行前注入 __ASTR_SHELL__）。 */
+export function isShellApp(): boolean {
   return Boolean(
-    (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } })
-      .Capacitor?.isNativePlatform?.(),
+    (window as unknown as { __ASTR_SHELL__?: boolean }).__ASTR_SHELL__,
   );
 }
 
@@ -39,9 +38,9 @@ export function hasServerUrl(): boolean {
   return Boolean(getServerUrl());
 }
 
-/** 首次使用的默认地址：浏览器原型预填便于审核；安卓壳保持未连接，由用户填写。 */
+/** 首次使用的默认地址：浏览器原型预填便于审核；壳内保持未连接，由用户填写。 */
 export function ensureDefaultServerUrl(): void {
-  if (isNativeApp()) return;
+  if (isShellApp()) return;
   if (localStorage.getItem(STORAGE_KEY) === null) {
     localStorage.setItem(STORAGE_KEY, DEFAULT_URL);
   }
@@ -54,7 +53,7 @@ export function resolveApiUrl(path: string): string {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-/** WebSocket 协议：按配置的服务器地址决定（app 页面是 https://localhost，服务器是 http，必须 ws）。 */
+/** WebSocket 协议：按配置的服务器地址决定；未配置走页面自身的协议。 */
 export function resolveWebSocketProtocol(): "ws:" | "wss:" {
   const base = getServerUrl();
   if (base) {
@@ -67,9 +66,8 @@ export function resolveWebSocketProtocol(): "ws:" | "wss:" {
   return window.location.protocol === "https:" ? "wss:" : "ws:";
 }
 
-/** WebSocket 主机名：仅原生环境且已配置地址时返回，否则走默认同源。 */
+/** WebSocket 主机名：已配置地址时返回它，否则走默认同源。 */
 export function resolveWebSocketHost(): string | undefined {
-  if (!isNativeApp()) return undefined;
   const base = getServerUrl();
   if (!base) return undefined;
   try {

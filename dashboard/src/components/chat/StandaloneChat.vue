@@ -250,7 +250,6 @@ import {
   type TransportMode,
 } from "@/composables/useMessages";
 import type { Session } from "@/composables/useSessions";
-import { isNativeApp } from "@/composables/useServerAddress";
 import { useModuleI18n } from "@/i18n/composables";
 import { useCustomizerStore } from "@/stores/customizer";
 import { buildWebchatUmoDetails } from "@/utils/chatConfigBinding";
@@ -315,7 +314,7 @@ const {
   },
 });
 
-// app 内对话传输默认 SSE：由原生流式层（capacitor-stream-http）承载，稳定可靠
+// app 内对话传输默认 SSE：与网页端共用同一条 fetch 流式路径
 const transportMode = ref<TransportMode>(
   (localStorage.getItem("chat.transportMode") as TransportMode) === "websocket"
     ? "websocket"

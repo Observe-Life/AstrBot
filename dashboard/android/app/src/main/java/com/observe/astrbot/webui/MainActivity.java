@@ -1,44 +1,171 @@
 package com.observe.astrbot.webui;
 
+import android.annotation.SuppressLint;
+import android.content.ClipData;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewCompat;
 
-import com.getcapacitor.BridgeActivity;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 
-public class MainActivity extends BridgeActivity {
+/**
+ * 极简原生壳：WebView + WebViewAssetLoader 伺服本地打包的前端。
+ *
+ * 与网页端的全部交互面：
+ * - 壳标记：window.__ASTR_SHELL__ = true（页面脚本执行前注入，前端据此启用壳行为）。
+ * - 返回键协议：window.__onNativeBack() 返回 "consumed"/"root"（沿用原约定）。
+ * - 文件上传：WebChromeClient.onShowFileChooser（系统选择器，行为同浏览器）。
+ * - blob 下载：window.__shellDownloadBlob(name, blob, mime) 经 JS 桥落盘到应用缓存。
+ */
+public class MainActivity extends AppCompatActivity {
 
+    private static final String START_PATH = "/index.html";
+    private static final int REQ_FILE_CHOOSER = 9101;
+
+    private WebView webView;
+    private ValueCallback<Uri[]> pendingFileChooser;
     private long lastBackAt = 0L;
 
+    /** 页面脚本执行前注入：壳标记 + blob 下载助手说明（助手本体经 addJavascriptInterface 注册）。 */
+    private static final String PRELOAD_JS =
+            "window.__ASTR_SHELL__=true;"
+            + "window.__shellDownloadBlob=function(name,blob,mime){"
+            + "try{var fr=new FileReader();"
+            + "fr.onload=function(){"
+            + "androidBridge.saveBase64(name,fr.result.split(',')[1],mime||'application/octet-stream');"
+            + "};fr.readAsDataURL(blob);}catch(e){}};";
+
+    @SuppressLint("SetJavaScriptEnabled")
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        /* Android 13+ 的手势返回走 OnBackPressedDispatcher，不再回调 onBackPressed()，
-         * 因此必须注册 dispatcher 回调才能拦到。本回调注册晚于 Capacitor 自己的，
-         * 优先级更高（dispatcher 后进先出）。
-         * 决策权交给网页：window.__onNativeBack() 返回 "consumed" 表示页面已处理
-         * （关闭思考详情页/浮层/回退路由），返回 "root" 表示停在根页，走双击退出。 */
+
+        webView = new WebView(this);
+        webView.setBackgroundColor(0xFFFFFFFF);
+        WebSettings s = webView.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        s.setLoadWithOverviewMode(true);
+        s.setUseWideViewPort(true);
+
+        final WebViewAssetLoader assetLoader = new WebViewAssetLoader.Builder()
+                // dist 根直接映射到虚拟源根：/index.html -> assets/index.html，
+                // /assets/index-xxx.js -> assets/assets/index-xxx.js（与 vite base=/ 产物对齐）
+                .addPathHandler("/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void saveBase64(String name, String base64, String mime) {
+                try {
+                    byte[] data = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                    File dir = new File(getCacheDir(), "downloads");
+                    if (!dir.exists()) dir.mkdirs();
+                    File out = new File(dir, name == null || name.isEmpty() ? "download.bin" : name);
+                    try (OutputStream os = new FileOutputStream(out)) {
+                        os.write(data);
+                    }
+                } catch (IOException | IllegalArgumentException ignored) {
+                }
+            }
+        }, "androidBridge");
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String scheme = request.getUrl().getScheme() == null ? "" : request.getUrl().getScheme();
+                if ("http".equals(scheme) || "https".equals(scheme)) return false;
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl()));
+                } catch (Exception ignored) {
+                }
+                return true;
+            }
+        });
+
+        // 注入先于任何页面脚本（官方 API，避免 onPageStarted 竞态）
+        WebViewCompat.addDocumentStartJavaScript(
+                webView, PRELOAD_JS,
+                java.util.Collections.singletonList("https://appassets.androidplatform.net"));
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                pendingFileChooser = callback;
+                try {
+                    startActivityForResult(params.createIntent(), REQ_FILE_CHOOSER);
+                } catch (Exception e) {
+                    pendingFileChooser = null;
+                    return false;
+                }
+                return true;
+            }
+        });
+
+        // 返回键：决策权交给网页（沿用 __onNativeBack 协议）
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                WebView webView = getBridge() != null ? getBridge().getWebView() : null;
-                if (webView == null) {
-                    exitOrWarn();
-                    return;
-                }
                 webView.evaluateJavascript(
                         "(function(){try{return (window.__onNativeBack&&window.__onNativeBack())||'root'}catch(e){return 'root'}})()",
                         value -> {
-                            if (value != null && value.contains("consumed")) {
-                                return;
-                            }
+                            if (value != null && value.contains("consumed")) return;
                             exitOrWarn();
                         });
             }
         });
+
+        setContentView(webView);
+        webView.loadUrl("https://appassets.androidplatform.net" + START_PATH);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQ_FILE_CHOOSER) {
+            if (pendingFileChooser == null) return;
+            Uri[] results = null;
+            if (resultCode == RESULT_OK && data != null) {
+                ClipData clip = data.getClipData();
+                if (clip != null) {
+                    results = new Uri[clip.getItemCount()];
+                    for (int i = 0; i < clip.getItemCount(); i++) {
+                        results[i] = clip.getItemAt(i).getUri();
+                    }
+                } else if (data.getData() != null) {
+                    results = new Uri[]{data.getData()};
+                }
+            }
+            pendingFileChooser.onReceiveValue(results);
+            pendingFileChooser = null;
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     /** 单次返回只提示；2 秒内第二次才真正退出。 */
