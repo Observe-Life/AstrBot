@@ -27,10 +27,13 @@ function mediaKey(part: MediaPart): string {
 }
 
 async function loadBlob(key: string, url: string) {
+  const target = resolveApiUrl(url);
+  console.log("[DEBUG-media] load", { key: key.slice(0, 40), raw: url, resolved: target, serverUrl: localStorage.getItem("server.url") });
   try {
-    const response = await axios.get(resolveApiUrl(url), {
+    const response = await axios.get(target, {
       responseType: "blob",
     });
+    console.log("[DEBUG-media] resp", { status: response.status, ctype: response.headers?.["content-type"], isBlob: response.data instanceof Blob, size: response.data?.size ?? String(response.data).length });
     const data = response.data;
     const blob =
       data instanceof Blob
