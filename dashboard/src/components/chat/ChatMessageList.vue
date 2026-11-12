@@ -477,7 +477,6 @@ import MessageContentTransition from "@/components/chat/MessageContentTransition
 import { computed, nextTick, reactive, ref } from "vue";
 import { Copy, Info, SquarePen } from "@lucide/vue";
 import axios from "axios";
-import { mediaDisplayUrl } from "@/utils/chatMedia";
 import { fileApi } from "@/api/v1";
 import RegenerateMenu, {
   type RegenerateModelSelection,
@@ -723,9 +722,8 @@ function rawPartUrl(part: MessagePart) {
   return "";
 }
 
-/* 壳内相对地址带不了鉴权，统一交给 chatMedia 转 blob；网页端原样返回 */
 function partUrl(part: MessagePart) {
-  return mediaDisplayUrl(part, rawPartUrl(part));
+  return rawPartUrl(part);
 }
 
 function plainTextFromMessage(message: ChatRecord) {

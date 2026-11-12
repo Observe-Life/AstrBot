@@ -162,6 +162,15 @@ function installAxiosInterceptors(instance: AxiosInstance) {
 
 export function fetchWithAuth(input: RequestInfo | URL, init?: RequestInit) {
   const fetchImpl = originalFetch ?? window.fetch.bind(window);
+  /* 安卓壳的页面源是 https://localhost：相对 API 地址必须改写到配置的服务器，
+   * 否则请求会打到壳自己的本地资源服务器（拿回 index.html）。
+   * 原先只有 axios 一侧做了改写，fetch 一侧缺失，导致媒体/上传等 fetch 调用全部失效。 */
+  if (isNativeApp() && !(input instanceof Request)) {
+    const raw = String(input);
+    if (raw.startsWith("/") && !raw.startsWith("//")) {
+      input = resolveApiUrl(raw);
+    }
+  }
   // The global fetch wrapper also handles public, cross-origin resources.
   try {
     const requestUrl = new URL(
